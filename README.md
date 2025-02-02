@@ -18,7 +18,7 @@ This project aims to assist geologists by developing a web scraper that automate
 - Improved Accuracy: Ensure the extracted data is accurate and reliable through AI validation.
 - Scalable Solution: Provide a scalable tool that can be used for ongoing and future geological data analysis.
 # Repository Structure
-/src - Contains all the code for web scraping and AI-based data extraction.
-/data - Sample data files used during development and testing.
-/notebooks - Jupyter notebooks used for exploratory data analysis and model development.
-/docs - Documentation and detailed explanations of the project.
+/src - Contains all the code for web scraping and AI-based data extraction.  
+/data - Sample data files used during development and testing.  
+/notebooks - Jupyter notebooks used for exploratory data analysis and model development.  
+/docs - Documentation and detailed explanations of the project.  
