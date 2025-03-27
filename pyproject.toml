@@ -1,0 +1,61 @@
+[tool.poetry]
+name = "slide"
+version = "0.1.0"
+description = "Smart Line Identification and Data Extraction"
+authors = ["Garcez, Vitor Hugo <vitor_hgbds@hotmail.com>"]
+readme = "README.md"
+license = "GNU GENERAL PUBLIC LICENSE"
+
+[tool.poetry.dependencies]
+python = ">=3.12"
+dlisio = ">=1.0.3,<2.0.0"
+rich = "^13.9.4"
+bs4 = "^0.0.2"
+matplotlib = "^3.10.0"
+lxml = "^5.3.0"
+tqdm = "^4.67.1"
+aiohttp = "^3.11.12"
+
+[tool.poetry.group.dev.dependencies]
+pre-commit = ">=4.1.0,<5.0.0"
+ruff = ">=0.9.4,<0.10.0"
+mypy = ">=1.14.1,<2.0.0"
+ipykernel = "^6.29.5"
+
+[tool.ruff]
+exclude = [".git", ".mypy_cache", ".ruff_cache", "venv", "./gas/models/deprecated/"]
+line-length = 120
+indent-width = 4
+# Allow fix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.format]
+# Like Black, use double quotes for strings.
+quote-style = "double"
+# Like Black, indent with spaces, rather than tabs.
+indent-style = "space"
+# Like Black, respect magic trailing commas.
+skip-magic-trailing-comma = false
+# Like Black, automatically detect the appropriate line ending.
+line-ending = "auto"
+
+[tool.ruff.lint.isort]
+case-sensitive = true
+combine-as-imports = true
+
+[tool.mypy]
+mypy_path = "slide"
+follow_imports = "silent"
+no_implicit_optional = true
+warn_unused_ignores = true
+show_error_codes = true
+disable_error_code = "func-returns-value"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+slide = 'slide.cli:cli'

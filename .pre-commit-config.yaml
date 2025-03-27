@@ -1,0 +1,50 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+repos:
+    - repo: https://github.com/pre-commit/pre-commit-hooks
+      rev: v4.5.0
+      hooks:
+        - id: end-of-file-fixer
+          name: Add extra line at the end of files
+        - id: trailing-whitespace
+          name: Trim trailing spaces
+        - id: name-tests-test
+          name: Pytest name convention
+          args: [--pytest-test-first]
+        - id: check-docstring-first
+          name: Check docstring before code
+        - id: check-json
+          name: Check .json files syntax
+        - id: check-merge-conflict
+          name: Check merge conflicts
+        - id: check-yaml
+          name: Check .yaml files syntax
+        - id: mixed-line-ending
+          name: Replaces or checks mixed line ending
+        - id: check-ast
+          name: Simply check whether files parse as valid python
+        - id: check-case-conflict
+          name: Check file naming conflict on a case-insensitive filesystem
+        - id: check-added-large-files
+          name: Prevent giant files from being committed
+
+    - repo: https://github.com/astral-sh/ruff-pre-commit
+      rev: v0.1.8
+      hooks:
+        # run the linter
+        - id: ruff
+          args: [--fix]
+        # run the formatter
+        - id: ruff-format
+
+    - repo: https://github.com/pre-commit/mirrors-mypy
+      rev: v1.8.0
+      hooks:
+        - id: mypy
+          exclude: tests
+          language: system
+
+    - repo: https://github.com/hadolint/hadolint
+      rev: v2.12.1-beta
+      hooks:
+        - id: hadolint-docker
