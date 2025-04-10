@@ -23,7 +23,11 @@ class CacheProvider:
     def clean(self):
         logger.debug(f"Creating an empty cache at {self.path}.")
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        open(self.path, "w", encoding="utf-8").close()
+        with open(self.path, "w", encoding="utf-8") as file:
+            json.dump(dict(), file, indent=4)
+            self.cache = dict()
+            file.close()
+
         
     def save(self, content: dict[str, Any]) -> str:
         logger.debug(f"Saving cache at: {self.path}")

@@ -40,11 +40,12 @@ class ProgressProvider:
 
     # progress for a task step that takes a while, but we're not sure how long
     step_progress_timed = Progress(
-        TextColumn('  '),
+        TextColumn(''),
         TimeElapsedColumn(),
         TextColumn('[bold purple]{task.fields[action]} ({task.completed}/{task.total})'),
         TimeRemainingColumn(),
         SpinnerColumn('simpleDots'),
+        redirect_stderr=False,
         #console=logging.console
     )
     # progress for a task step that has a known total target (steps, bytes, ...)
@@ -54,14 +55,16 @@ class ProgressProvider:
         TextColumn('[bold purple]{task.fields[action]}'),
         BarColumn(),
         TextColumn('({task.completed}/{task.total})'),
+        redirect_stderr=False,
         #console=logging.console
     )
     download_progress = Progress(
-        TextColumn('[bold yellow]   Downloading {task.fields[filename]}'),
+        TextColumn('[bold yellow] Downloading {task.fields[filename]}'),
         BarColumn(),
         DownloadColumn(),
         TransferSpeedColumn(),
         TimeRemainingColumn(),
+        redirect_stderr=False,
         #console=logging.console
     )
     # progress for a single tasks
@@ -83,10 +86,11 @@ class ProgressProvider:
         label_progress,
         step_progress_timed,
         step_progress,
-        download_progress,
         Rule(style='#AAAAAA'),
+        download_progress,
         task_progress,
-        overall_progress
+        overall_progress,
+        fit=True,
     )
     
     def __new__(cls, *args, **kwargs):

@@ -5,10 +5,12 @@ start scraping
 """
 
 
+import json
 import os
 from pathlib import Path
 import base64
 from typing import Callable
+import re
 
 from slide.commons import PATTERN_COMPOSITE_PROFILE, PATTERN_CONVENTIONAL_PROFILE
 from slide.crawler.anp import ANPScrapper, ANPSpider
@@ -33,9 +35,8 @@ class ANPScrapingPipeline(Pipeline):
         
     def _generate_authorization_headers(self, basin_links: dict[str, str]) -> dict[str, dict[str,str]]:  
         BASE_HEADER = {
-            "Content-Type": "application/xml; charset=UTF-8",
-            "X-Requested-With": "XMLHttpRequest",
-        }
+            "host": "reate.cprm.gov.br", 
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"}
         basin_headers = {}
         
         for basin_name, link in basin_links.items():
@@ -74,6 +75,8 @@ class ANPScrapingPipeline(Pipeline):
             logger.debug(f"Crawling spider for basin: {basin}")
             logger.debug(f"Start URL: {URL}")
             logger.debug(f"header: {header}")
+            header["X-Requested-With"] = "XMLHttpRequest"
+            header["Content-Type"] = "application/xml; charset=UTF-8"
             
             basin_leafs[basin] = ANPSpider(self.base_url, self.seconds_delay).start_crawl(
                 url=URL,
@@ -90,55 +93,83 @@ class ANPScrapingPipeline(Pipeline):
         ,basin_links: dict[str, list[str]]
         ,basin_headers: dict[str, dict[str,str]]
         ,fetch_dir_name: Callable[[str],os.PathLike] | None = None
-        ) -> None:
+        ) -> dict[str, list[Path]]:
         
+        BASE_DOWNLOAD_HEADER = {
+            "sec-fetch-dest": "document",
+            "sec-fetch-mode": "navigate",
+            "sec-fetch-site": "same-origin",
+            "sec-fetch-user": "?1",
+            "upgrade-insecure-requests": "1",
+            "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"
+        }
+        basin_files = {}
         for basin, links in basin_links.items():
-            self.download_provider.download(
+            logger.debug(f"Downloading files for basin: {basin}")
+            header = basin_headers.get(basin)
+            files_path = self.download_provider.download(
                 urls=links,
                 directory=self.download_directory / basin,
-                headers=basin_headers.get(basin),
+                headers={**header, **BASE_DOWNLOAD_HEADER},
                 fetch_directory_callback=fetch_dir_name,
                 use_cache=True,
                 cache_path=Path(f".download_cache/cache_{basin.replace(" ","_").replace(".","_").replace("-","_")}.json")
             )
+            basin_files[basin] = files_path
+        return basin_files
     
+    def _fetch_profiles_links(self, basin_catalogs: dict[str, list[Path]]) -> dict[str, list[str]]:
+        profiles_links = {}
+        for basin, catalog_paths in basin_catalogs.items():
+            logger.debug(f"Fetching profiles links for basin: {basin}")
+            catalog_path = catalog_paths[-1]
+            links = self.anp_scrapper.fetch_profile_links(catalog_path=catalog_path)
+            all_links = links.get("composite", []) + links.get("conventional", [])
+            profiles_links[basin] = [str(self.base_url + self.well_url + link) for link in all_links]
+        return profiles_links
     
-    def _create_summary(self, basins: list[str]) -> dict[str, int | list[dict[str,int]]]:
-        """
-        Recursively checks each folder and subfolder from start_path:
-        - Verifies if the folder contains files.
-        - Checks if a specific subfolder exists.
-
-        :param start_path: The directory to start searching from.
-        :param target_folder: The folder name to check existence.
-        """
-        summary: dict[str, int | list[dict[str,int]]] = {"COMPOSITE": 0, "CONVENTIONAL": 0, "basins_details": []}
-        for basin in basins:
-            root_folder_name = basin.replace(".","_").replace("-","_").replace(" ","_")
-            start_path = self.download_directory / root_folder_name
-            basin_summary = {"COMPOSITE": 0, "CONVENTIONAL": 0}
-            for root, dirs, files in os.walk(start_path):
-                for file in files:
-                    file: str = file
-                    current_dir: str = Path(root).name
-                    profile, pattern = (
-                        ("COMPOSITE", PATTERN_COMPOSITE_PROFILE)
-                        if file.endswith(".pdf")
-                        else ("CONVENTIONAL", PATTERN_CONVENTIONAL_PROFILE)
-                    )
-                    basin_summary[profile] = (
-                        basin_summary[profile] + 1
-                        if self.anp_scrapper.matches_patterns(current_dir, [pattern])
-                        else basin_summary[profile]
-                    )         
-            summary["COMPOSITE"] = summary["COMPOSITE"] + basin_summary["COMPOSITE"]
-            summary["CONVENTIONAL"] = summary["CONVENTIONAL"] + basin_summary["CONVENTIONAL"]
-            logger.info(f"Basin: {basin}")
-            logger.info(f"Total composite Profiles: {basin_summary['COMPOSITE']}")
-            logger.info(f"Total conventional Profiles: {basin_summary['CONVENTIONAL']}")
-        logger.info(f"Total composite profiles: {summary["COMPOSITE"]}")
-        logger.info(f"Total conventional profiles: {summary["CONVENTIONAL"]}")
-        return summary
+    def _create_summary(self, profiles_links: dict[str, dict[str, list[str]]]):
+        summary = {}
+        basin_records = []
+        for basin, profiles in profiles_links.items():
+            wells = {}
+            for profile_type, links in profiles.items():
+                for link in links:    
+                    match = re.search(r"/POCO/(.*?)/perfil", link, re.IGNORECASE)
+                    well = match.group(1).split("/")[-1]
+                    file_extension = link.split(".")[-1]
+                    if well not in wells:
+                        wells[well] = {
+                            "composite_count": 0,
+                            "conventional_count": 0,
+                            "composite_extensions": set(),
+                            "conventional_extensions": set()
+                        }
+                    p = "composite" if "composite" in profile_type else "conventional"
+                    wells[well][f"{p}_count"] += 1
+                    wells[well][f"{p}_extensions"] = wells[well].get("composite_extensions").add(file_extension)
+            
+            wells_records = [{
+                "basin": basin,
+                "well": well,
+                **data
+                } for well, data in wells.items()
+            ]
+            basin_record = {
+                "basin": basin,	
+                "total_wells": len(wells_records),
+                "total_wells_with_composite": len([well for well, data in wells.items() if data["composite_count"] > 0]),
+                "total_wells_with_conventional": len([well for well, data in wells.items() if data["conventional_count"] > 0]),
+                "total_wells_with_both": len([well for well, data in wells.items() if data["conventional_count"] > 0 and data["composite_count"] > 0]),
+                "total_files": sum([len(links) for links in profiles.values()]),
+            }
+            basin_records.append(basin_record)
+            logger.info(f"Basin record: {basin_record}")
+        summary_path = Path(self.download_directory) / "summary.json"
+        summary_path.mkdir(parents=True, exist_ok=True)
+        with open(summary_path, "w", encoding="utf-8") as file:
+            json.dumps(basin_records, file, indent=4)
+            file.close()
         
     def run(self, *args, **kwargs):
         logger.info(":cyclone: Fetching basins entry points...")
@@ -157,17 +188,18 @@ class ANPScrapingPipeline(Pipeline):
         logger.info(":white_check_mark: Done.")
         
         logger.info(":cyclone: Downloading basins catalogs...")
-        self._download(basin_catalogs, basin_headers)
+        catalogs_path = self._download(basin_catalogs, basin_headers)
         logger.info(":white_check_mark: Done.")
         
         logger.info(":cyclone: Extracting composite and conventional profile urls from catalogs...")
-        #basin_profiles = self._download_leafs(basin_catalogs, basin_headers)
-        logger.info(":white_check_mark: Done.")
-        
-        logger.info(":cyclone: Downloading composite and conventional profiles from urls...")
-        #self._download(basin_profiles, basin_headers, self.anp_scrapper.fetch_profile_path)
+        profiles_links = self._fetch_profiles_links(catalogs_path)
         logger.info(":white_check_mark: Done.")
         
         logger.info(":cyclone: Summarizing...")
-        #self._create_summary(basin_headers.keys())
+        self._create_summary(profiles_links)
         logger.info(":white_check_mark: Done.")
+        
+        logger.info(":cyclone: Downloading composite and conventional profiles from urls...")
+        self._download(profiles_links, basin_headers, self.anp_scrapper.fetch_profile_path)
+        logger.info(":white_check_mark: Done.")
+        
