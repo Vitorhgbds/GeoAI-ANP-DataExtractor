@@ -25,6 +25,12 @@ class DownloadProvider:
         self.num_parts = num_parts
         self.chunk_size = chunk_size
         self.SENTINEL = object()
+    def save_progress(self) -> None:
+        """Save the progress of the download."""
+        unique_urls = set(self.downloaded_urls)
+        unique_paths = set(self.paths)
+        unique_errors = [dict(t) for t in {tuple(sorted(d.items())) for d in self.download_errors}]
+        self.cache.save({"urls": list(self.urls), "downloaded_urls": list(unique_urls), "paths":[str(p) for p in unique_paths], "errors": unique_errors})
     
     def download(
         self
@@ -47,44 +53,47 @@ class DownloadProvider:
             self.downloaded_errors = content.get("errors", [])
         else:
             self.cache.clean()
-        all_urls = set(urls + self.urls)
-        urls_to_download = all_urls.difference(set(self.downloaded_urls))
+            
+        urls_to_download = set(urls).difference(set(self.downloaded_urls))
         if not urls_to_download:
             logger.debug(f"Difference between given urls and downloaded urls is empty.")
             return self.paths
+        self.urls = set(self.urls).union(set(urls))
         
         step_progress = self.progress_provider.get_progress(ProgressType.STEP_TIMED)
         live = self.progress_provider.get_live()
-        with live:
-            self.current_task_id = step_progress.add_task('', total=len(urls_to_download), action=f'Downloading sources in {str(directory)}')
-            with ThreadPoolExecutor(max_workers=4) as executor:
-                futures: list[Future] = []
-                for link in urls_to_download:
-                    file: Path = (
-                        directory / fetch_directory_callback(link)
-                        if fetch_directory_callback
-                        else directory / Path(link.split("/")[-1])
+        try:
+            with live:
+                self.current_task_id = step_progress.add_task('', total=len(urls_to_download), action=f'Downloading sources in {str(directory)}')
+                with ThreadPoolExecutor(max_workers=4) as executor:
+                    futures: list[Future] = []
+                    for link in urls_to_download:
+                        file: Path = (
+                            directory / fetch_directory_callback(link)
+                            if fetch_directory_callback
+                            else directory / Path(link.split("/")[-1])
+                            )
+                        file.parent.mkdir(parents=True, exist_ok=True)
+                        
+                        futures.append(
+                            executor.submit(
+                                self.run_parallel_download,
+                                link,
+                                file, 
+                                headers
+                            )
                         )
-                    file.parent.mkdir(parents=True, exist_ok=True)
-                    
-                    futures.append(
-                        executor.submit(
-                            self.run_parallel_download,
-                            link,
-                            file, 
-                            headers
-                        )
-                    )
-        for future in futures:
-            file = future.result()
-            if file:
-                self.paths.append(file)
-        
-        step_progress.remove_task(self.current_task_id)
-        unique_urls = set(self.downloaded_urls)
-        unique_paths = set(self.paths)
-        unique_errors = [dict(t) for t in {tuple(sorted(d.items())) for d in self.download_errors}]
-        self.cache.save({"urls": list(all_urls), "downloaded_urls": list(unique_urls), "paths":[str(p) for p in unique_paths], "errors": unique_errors})
+            for future in futures:
+                file = future.result()
+                if file:
+                    self.paths.append(file)
+        except (asyncio.CancelledError,KeyboardInterrupt) as e:
+            logger.warning("Download interrupted by user (Ctrl+C). Cleaning up...")
+            # Optionally cancel async tasks or clean temporary state
+            raise SystemExit(1)
+        finally:
+            step_progress.remove_task(self.current_task_id)
+            self.save_progress()
         return self.paths
                 
     def run_parallel_download(
@@ -102,10 +111,16 @@ class DownloadProvider:
             self.downloaded_urls.append(url)
             step_progress = self.progress_provider.get_progress(ProgressType.STEP_TIMED)
             step_progress.update(self.current_task_id,advance=1)
+        except (asyncio.CancelledError, KeyboardInterrupt) as e:
+            logger.warning("Download interrupted by user (Ctrl+C). Cleaning up...")
+            raise SystemExit(1)
         except Exception as e:
             e.add_note(f"Error downloading file: {url}")
             logger.error(e)
             self.download_errors.append({"url": url, "error": str(e)})
+        self.downloaded_urls.append(url)
+        self.paths.append(file)
+        self.save_progress()    
         return file            
     
     async def parallel_download(
@@ -145,7 +160,6 @@ class DownloadProvider:
         await queue.join()  # Wait for all chunks to be written
         # Now safely wait for writer to finish
         actual_size = await writer_task
-        
         download_progress.stop_task(download_task_id)
         download_progress.update(download_task_id,visible=False)
         download_progress.remove_task(download_task_id)
@@ -174,11 +188,14 @@ class DownloadProvider:
                 try:
                     chunk_headers["Range"] = f"bytes={current}-{attempt_end}"
                     async with session.get(url, headers=chunk_headers) as response:
-                        chunk = await response.read()
+                        chunk = await asyncio.wait_for(response.read(),timeout=600)
                         whole_chunk += chunk
                         await queue.put((current, chunk))
                         current += len(chunk)
                         attempt_end = min(end, current + (end - current))
+                except asyncio.CancelledError as e:
+                    logger.warning("Download interrupted by user (Ctrl+C). Cleaning up...")
+                    raise SystemExit(1)
                 except Exception as e:
                     e.add_note(f"Error downloading chunk: {url} from {start} to {end}")
                     self.download_errors.append({"url": url, "error": str(e)})

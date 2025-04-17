@@ -28,14 +28,13 @@ class ANPScrapper(Scrapper):
     def fetch_profile_path(self, file_url: str, *args, **kwargs) -> os.PathLike:
         # Splitting the url to get the path
         directory_tree = file_url.split("/POCO/")[-1].split("/")
-        # Removing file name
-        path = "/".join(directory_tree[:-1])
+        path = "/".join(directory_tree[0:])
         return pathlib.Path(path)
     
     def fetch_profile_links(self, catalog_path: pathlib.Path, *args, **kwargs) -> dict[str, list[str]]:
         profile_links = {}
         # read each line of a file and find a link in line
-        with open(catalog_path, "r") as file:
+        with open(catalog_path, "r", encoding="utf-8", errors="ignore") as file:
             for line in file:
                 link = line.split("..")[-1].strip()
                 if self.matches_patterns(link, [PATTERN_CONVENTIONAL_PROFILE]):

@@ -125,14 +125,17 @@ class ANPScrapingPipeline(Pipeline):
             catalog_path = catalog_paths[-1]
             links = self.anp_scrapper.fetch_profile_links(catalog_path=catalog_path)
             all_links = links.get("composite", []) + links.get("conventional", [])
-            profiles_links[basin] = [str(self.base_url + self.well_url + link) for link in all_links]
+            all_links_normalized = ["/".join(link.split("/")[2:]) for link in all_links]
+            profiles_links[basin] = [str(self.base_url + self.well_url + link) for link in all_links_normalized]
         return profiles_links
     
-    def _create_summary(self, profiles_links: dict[str, dict[str, list[str]]]):
+    def _create_summary(self, basin_catalogs: dict[str, list[Path]]):
         summary = {}
         basin_records = []
-        for basin, profiles in profiles_links.items():
+        for basin, catalog_paths in basin_catalogs.items():
             wells = {}
+            catalog_path = catalog_paths[-1]
+            profiles = self.anp_scrapper.fetch_profile_links(catalog_path=catalog_path)
             for profile_type, links in profiles.items():
                 for link in links:    
                     match = re.search(r"/POCO/(.*?)/perfil", link, re.IGNORECASE)
@@ -142,12 +145,18 @@ class ANPScrapingPipeline(Pipeline):
                         wells[well] = {
                             "composite_count": 0,
                             "conventional_count": 0,
+                            "composite_pdf": 0,
+                            "conventional_dlis_lis_las": 0,
                             "composite_extensions": set(),
                             "conventional_extensions": set()
                         }
                     p = "composite" if "composite" in profile_type else "conventional"
                     wells[well][f"{p}_count"] += 1
-                    wells[well][f"{p}_extensions"] = wells[well].get("composite_extensions").add(file_extension)
+                    wells[well][f"{p}_extensions"].add(file_extension)
+                    if file_extension.lower() == "pdf" and p == "composite":
+                        wells[well]["composite_pdf"] += 1
+                    if file_extension.lower() in ["dlis", "lis", "las"] and p == "conventional":
+                        wells[well]["conventional_dlis_lis_las"] += 1
             
             wells_records = [{
                 "basin": basin,
@@ -161,14 +170,17 @@ class ANPScrapingPipeline(Pipeline):
                 "total_wells_with_composite": len([well for well, data in wells.items() if data["composite_count"] > 0]),
                 "total_wells_with_conventional": len([well for well, data in wells.items() if data["conventional_count"] > 0]),
                 "total_wells_with_both": len([well for well, data in wells.items() if data["conventional_count"] > 0 and data["composite_count"] > 0]),
+                "total_wells_with_composite_pdf": len([well for well, data in wells.items() if data["composite_pdf"] > 0]),
+                "total_wells_with_conventional_dlis_lis_las": len([well for well, data in wells.items() if data["conventional_dlis_lis_las"] > 0]),
+                "total_wells_with_composite_and_conventional_dlis_lis_las": len([well for well, data in wells.items() if data["composite_pdf"] > 0 and data["conventional_dlis_lis_las"] > 0]),
                 "total_files": sum([len(links) for links in profiles.values()]),
             }
             basin_records.append(basin_record)
             logger.info(f"Basin record: {basin_record}")
         summary_path = Path(self.download_directory) / "summary.json"
-        summary_path.mkdir(parents=True, exist_ok=True)
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
         with open(summary_path, "w", encoding="utf-8") as file:
-            json.dumps(basin_records, file, indent=4)
+            json.dump(basin_records, file, indent=4)
             file.close()
         
     def run(self, *args, **kwargs):
@@ -196,7 +208,7 @@ class ANPScrapingPipeline(Pipeline):
         logger.info(":white_check_mark: Done.")
         
         logger.info(":cyclone: Summarizing...")
-        self._create_summary(profiles_links)
+        self._create_summary(catalogs_path)
         logger.info(":white_check_mark: Done.")
         
         logger.info(":cyclone: Downloading composite and conventional profiles from urls...")
