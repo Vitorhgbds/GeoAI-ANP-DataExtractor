@@ -25,6 +25,7 @@ class DownloadProvider:
         self.num_parts = num_parts
         self.chunk_size = chunk_size
         self.SENTINEL = object()
+        
     def save_progress(self) -> None:
         """Save the progress of the download."""
         unique_urls = set(self.downloaded_urls)

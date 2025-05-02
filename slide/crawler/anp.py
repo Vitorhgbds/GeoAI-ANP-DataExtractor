@@ -9,7 +9,6 @@ from bs4 import BeautifulSoup, element
 from slide.commons import (BAR_FORMAT, PATTERNS, PATTERN_PROFILES, PATTERN_MD5_CATALOG, PATTERN_COMPOSITE_PROFILE, PATTERN_CONVENTIONAL_PROFILE)
 from slide.crawler.scrapper import Scrapper
 from slide.crawler.spider import Spider
-from slide.crawler.download import download_files_concurrently
 from slide.logger import Logger
 
 from slide.providers import CacheProvider, ProgressProvider, ProgressType
@@ -29,7 +28,7 @@ class ANPScrapper(Scrapper):
         # Splitting the url to get the path
         directory_tree = file_url.split("/POCO/")[-1].split("/")
         path = "/".join(directory_tree[0:])
-        return pathlib.Path(path)
+        return pathlib.Path(path).parent
     
     def fetch_profile_links(self, catalog_path: pathlib.Path, *args, **kwargs) -> dict[str, list[str]]:
         profile_links = {}

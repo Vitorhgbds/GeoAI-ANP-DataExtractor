@@ -14,8 +14,11 @@ import re
 
 from slide.commons import PATTERN_COMPOSITE_PROFILE, PATTERN_CONVENTIONAL_PROFILE
 from slide.crawler.anp import ANPScrapper, ANPSpider
+from slide.database.models.download import DownloadDAO, DownloadDTO, DownloadStatus
+from slide.managers.downloader.strategies.aria2p import Aria2P
 from slide.pipelines.pipeline import Pipeline
 from slide.logger import Logger
+from slide.providers.cache import CacheProvider
 from slide.providers.download import DownloadProvider
 
 logger = Logger().get_logger()
@@ -24,14 +27,18 @@ class ANPScrapingPipeline(Pipeline):
     basins_url = "/anp/TERRESTRE"
     well_url = "/arquivos/public.php/webdav/"
     
-    def __init__(self, base_url: str = "https://reate.cprm.gov.br", download_directory: str = "anp_data/", seconds_delay: float = 0.0, *args, **kwargs):
+    def __init__(self, base_url: str = "https://reate.cprm.gov.br", download_directory: str = "anp_data/", seconds_delay: float = 0.0, use_cache: bool = True, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.base_url: str = base_url
         self.download_directory: os.PathLike = Path(download_directory)
         self.anp_scrapper = ANPScrapper()
         self.seconds_delay = seconds_delay
         self.download_provider = DownloadProvider(base_directory=Path(download_directory))
-        
+        self.use_cache = use_cache
+        self.dao = DownloadDAO(db_path=Path("./download.db"))
+        if not self.use_cache:
+            self.dao.clean()
+        self.downloader = Aria2P(cache_dao=self.dao)
         
     def _generate_authorization_headers(self, basin_links: dict[str, str]) -> dict[str, dict[str,str]]:  
         BASE_HEADER = {
@@ -71,6 +78,7 @@ class ANPScrapingPipeline(Pipeline):
         URL = str(self.base_url + self.well_url)
         
         basin_leafs = {}
+        dtos = []
         for basin, header in basin_headers.items():
             logger.debug(f"Crawling spider for basin: {basin}")
             logger.debug(f"Start URL: {URL}")
@@ -84,15 +92,24 @@ class ANPScrapingPipeline(Pipeline):
                 data=PAYLOAD,
                 headers=header,
                 use_cache=True,
-                cache_path=f".crawl_cache/cache_{basin.replace(" ","_").replace(".","_").replace("-","_")}.json"
+                cache_path=f'.crawl_cache/cache_{basin.replace(" ","_").replace(".","_").replace("-","_")}.json'
             )
+            dtos.extend([DownloadDTO(
+                url=leaf,
+                basin=basin,
+                name=leaf.split("/")[-1],
+                path=str(self.download_directory / basin),
+                status=DownloadStatus.WAITING,
+                headers=header
+            ) for leaf in basin_leafs[basin]])
+        logger.info(f"Found {len(dtos)} leafs in {len(basin_leafs)} basins.")
+        self.dao.bulk_insert(dtos)
+        
         return basin_leafs
     
     def _download(
         self
-        ,basin_links: dict[str, list[str]]
-        ,basin_headers: dict[str, dict[str,str]]
-        ,fetch_dir_name: Callable[[str],os.PathLike] | None = None
+        ,dtos: list[DownloadDTO]
         ) -> dict[str, list[Path]]:
         
         BASE_DOWNLOAD_HEADER = {
@@ -104,29 +121,37 @@ class ANPScrapingPipeline(Pipeline):
             "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"
         }
         basin_files = {}
-        for basin, links in basin_links.items():
-            logger.debug(f"Downloading files for basin: {basin}")
-            header = basin_headers.get(basin)
-            files_path = self.download_provider.download(
-                urls=links,
-                directory=self.download_directory / basin,
-                headers={**header, **BASE_DOWNLOAD_HEADER},
-                fetch_directory_callback=fetch_dir_name,
-                use_cache=True,
-                cache_path=Path(f".download_cache/cache_{basin.replace(" ","_").replace(".","_").replace("-","_")}.json")
-            )
-            basin_files[basin] = files_path
+        downloader = Aria2P()
         return basin_files
     
-    def _fetch_profiles_links(self, basin_catalogs: dict[str, list[Path]]) -> dict[str, list[str]]:
+    def _fetch_profiles_links(self, dtos: list[DownloadDTO]) -> dict[str, list[str]]:
         profiles_links = {}
-        for basin, catalog_paths in basin_catalogs.items():
-            logger.debug(f"Fetching profiles links for basin: {basin}")
-            catalog_path = catalog_paths[-1]
+        new_dtos = []
+        for dto in dtos:
+            
+            catalog_path = Path(dto.path) / dto.name
+            basin = dto.basin
+            if not catalog_path.exists():
+                logger.warning(f"Catalog path does not exist: {catalog_path}")
+                continue
+            
+            if basin not in profiles_links:
+                profiles_links[basin] = []
+            
             links = self.anp_scrapper.fetch_profile_links(catalog_path=catalog_path)
             all_links = links.get("composite", []) + links.get("conventional", [])
             all_links_normalized = ["/".join(link.split("/")[2:]) for link in all_links]
-            profiles_links[basin] = [str(self.base_url + self.well_url + link) for link in all_links_normalized]
+            profiles_links[basin].extend([str(self.base_url + self.well_url + link) for link in all_links_normalized])
+            
+            new_dtos.extend([DownloadDTO(
+                url=link,
+                basin=basin,
+                name=link.split("/")[-1],
+                path=str(self.download_directory / basin / self.anp_scrapper.fetch_profile_path(link)),
+                status=DownloadStatus.WAITING,
+                headers=dto.headers
+            ) for link in profiles_links[basin]])
+        self.dao.bulk_insert(new_dtos)
         return profiles_links
     
     def _create_summary(self, basin_catalogs: dict[str, list[Path]]):
@@ -200,18 +225,21 @@ class ANPScrapingPipeline(Pipeline):
         logger.info(":white_check_mark: Done.")
         
         logger.info(":cyclone: Downloading basins catalogs...")
-        catalogs_path = self._download(basin_catalogs, basin_headers)
+        dtos = self.dao.fetch_where(f"lower(name) LIKE '%md5%.txt' and status = '{DownloadStatus.WAITING.value}'")
+        self.downloader.download(dtos)
         logger.info(":white_check_mark: Done.")
         
         logger.info(":cyclone: Extracting composite and conventional profile urls from catalogs...")
-        profiles_links = self._fetch_profiles_links(catalogs_path)
-        logger.info(":white_check_mark: Done.")
-        
-        logger.info(":cyclone: Summarizing...")
-        self._create_summary(catalogs_path)
+        dtos = self.dao.fetch_where(f"lower(name) LIKE '%md5%.txt'")
+        self._fetch_profiles_links(dtos)
         logger.info(":white_check_mark: Done.")
         
         logger.info(":cyclone: Downloading composite and conventional profiles from urls...")
-        self._download(profiles_links, basin_headers, self.anp_scrapper.fetch_profile_path)
+        dtos = self.dao.fetch_where(f"lower(name) NOT LIKE '%md5%.txt' and status = '{DownloadStatus.WAITING.value}'")
+        self.downloader.download(dtos)
+        logger.info(":white_check_mark: Done.")
+        
+        logger.info(":cyclone: Summarizing...")
+        #self._create_summary(catalogs_path)
         logger.info(":white_check_mark: Done.")
         

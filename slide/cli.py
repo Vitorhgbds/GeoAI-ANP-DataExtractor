@@ -85,7 +85,7 @@ def cli() -> None:
             case _:
                 parser.print_help()
     except Exception as e:
-        logger.error(e)
+        raise
     os._exit(0)
 
 

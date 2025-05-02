@@ -35,6 +35,14 @@ class CacheProvider:
             json.dump(content, file, indent=4)
             self.cache = content
             return file.name
+    
+    def bulk_insert(self, content: dict[str, Any]) -> str:
+        for k, v in content.items():
+            if k in self.cache and isinstance(self.cache[k], list) and isinstance(v, list):
+                self.cache[k].extend(v)
+            else:
+                self.cache[k] = v
+        self.save(self.cache)
         
     def fetch(self) -> dict[str, Any]:
         return self.cache
