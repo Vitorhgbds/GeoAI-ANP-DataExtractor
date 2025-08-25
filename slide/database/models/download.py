@@ -16,7 +16,7 @@ class DownloadDTO:
     name: str
     status: DownloadStatus  # "done", "waiting", "failed"
     errors: Optional[str] = None
-    headers: Optional[str] = None  # You can store this as JSON string if needed
+    headers: Optional[str] | Optional[dict[str, str]] = None  # You can store this as JSON string if needed
     basin: Optional[str] = None
 
 class DownloadDAO:

@@ -42,7 +42,7 @@ class CacheProvider:
                 self.cache[k].extend(v)
             else:
                 self.cache[k] = v
-        self.save(self.cache)
+        return self.save(self.cache)
         
     def fetch(self) -> dict[str, Any]:
         return self.cache
