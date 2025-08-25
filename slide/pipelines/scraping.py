@@ -19,7 +19,6 @@ from slide.managers.downloader.strategies.aria2p import Aria2P
 from slide.pipelines.pipeline import Pipeline
 from slide.logger import Logger
 from slide.providers.cache import CacheProvider
-from slide.providers.download import DownloadProvider
 
 logger = Logger().get_logger()
 
@@ -33,7 +32,6 @@ class ANPScrapingPipeline(Pipeline):
         self.download_directory: os.PathLike = Path(download_directory)
         self.anp_scrapper = ANPScrapper()
         self.seconds_delay = seconds_delay
-        self.download_provider = DownloadProvider(base_directory=Path(download_directory))
         self.use_cache = use_cache
         self.dao = DownloadDAO(db_path=Path("./download.db"))
         if not self.use_cache:
@@ -98,7 +96,7 @@ class ANPScrapingPipeline(Pipeline):
                 url=leaf,
                 basin=basin,
                 name=leaf.split("/")[-1],
-                path=str(self.download_directory / basin),
+                path=str(self.download_directory / basin), # type: ignore
                 status=DownloadStatus.WAITING,
                 headers=header
             ) for leaf in basin_leafs[basin]])
@@ -147,7 +145,7 @@ class ANPScrapingPipeline(Pipeline):
                 url=link,
                 basin=basin,
                 name=link.split("/")[-1],
-                path=str(self.download_directory / basin / self.anp_scrapper.fetch_profile_path(link)),
+                path=str(self.download_directory / basin / self.anp_scrapper.fetch_profile_path(link)), # type: ignore
                 status=DownloadStatus.WAITING,
                 headers=dto.headers
             ) for link in profiles_links[basin]])
@@ -164,7 +162,7 @@ class ANPScrapingPipeline(Pipeline):
             for profile_type, links in profiles.items():
                 for link in links:    
                     match = re.search(r"/POCO/(.*?)/perfil", link, re.IGNORECASE)
-                    well = match.group(1).split("/")[-1]
+                    well = match.group(1).split("/")[-1] # type: ignore
                     file_extension = link.split(".")[-1]
                     if well not in wells:
                         wells[well] = {
@@ -229,17 +227,17 @@ class ANPScrapingPipeline(Pipeline):
         self.downloader.download(dtos)
         logger.info(":white_check_mark: Done.")
         
-        logger.info(":cyclone: Extracting composite and conventional profile urls from catalogs...")
-        dtos = self.dao.fetch_where(f"lower(name) LIKE '%md5%.txt'")
-        self._fetch_profiles_links(dtos)
-        logger.info(":white_check_mark: Done.")
+        # logger.info(":cyclone: Extracting composite and conventional profile urls from catalogs...")
+        # dtos = self.dao.fetch_where(f"lower(name) LIKE '%md5%.txt'")
+        # self._fetch_profiles_links(dtos)
+        # logger.info(":white_check_mark: Done.")
         
-        logger.info(":cyclone: Downloading composite and conventional profiles from urls...")
-        dtos = self.dao.fetch_where(f"lower(name) NOT LIKE '%md5%.txt' and status = '{DownloadStatus.WAITING.value}'")
-        self.downloader.download(dtos)
-        logger.info(":white_check_mark: Done.")
+        # logger.info(":cyclone: Downloading composite and conventional profiles from urls...")
+        # dtos = self.dao.fetch_where(f"lower(name) NOT LIKE '%md5%.txt' and status = '{DownloadStatus.WAITING.value}'")
+        # self.downloader.download(dtos)
+        # logger.info(":white_check_mark: Done.")
         
-        logger.info(":cyclone: Summarizing...")
-        #self._create_summary(catalogs_path)
-        logger.info(":white_check_mark: Done.")
+        # logger.info(":cyclone: Summarizing...")
+        # #self._create_summary(catalogs_path)
+        # logger.info(":white_check_mark: Done.")
         
