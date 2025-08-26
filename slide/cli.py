@@ -1,6 +1,7 @@
 import argparse
 import os, sys
 
+from slide.pipelines.new_scrapping_pipeline import NewScrappingPipeline
 from slide.pipelines.scraping import ANPScrapingPipeline
 from slide.logger import Logger
 
@@ -8,7 +9,8 @@ logging = Logger()
 logger = logging.get_logger()
 
 def scrap(data_path: str, *args, **kwargs):
-    pipeline = ANPScrapingPipeline(download_directory=data_path, **kwargs)
+    pipeline = NewScrappingPipeline() 
+    #ANPScrapingPipeline(download_directory=data_path, **kwargs)
     pipeline.run()
 
 def make_shared_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:

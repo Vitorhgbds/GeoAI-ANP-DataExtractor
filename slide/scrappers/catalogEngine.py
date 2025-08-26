@@ -1,19 +1,22 @@
 
 
 from pathlib import Path
+from typing import Tuple
 from slide.database.models.download import DownloadDAO, DownloadDTO, DownloadStatus
+from slide.logger import Logger
 from slide.providers.cache import CacheProvider
 from slide.scrappers import WebScrapperEngine
 from slide.scrappers.catalogScrapper import CatalogScrapper
 from slide.downloaders.aria2p import Aria2P
 
-
+logging = Logger()
+logger = logging.get_logger()
 class CatalogEngine(WebScrapperEngine):
     """
-    Scraper for the catalog engine.
+    This engine is responsible for managing the catalog scraping process for all basins available.
     """
 
-    def __init__(self, auths: dict[str,str]) -> None:
+    def __init__(self, auths: list[Tuple[str,str]]) -> None:
         self.dao = DownloadDAO(db_path=Path("./download.db"))
         self.downloader = Aria2P(cache_dao=self.dao)
         self.auths = auths
@@ -28,15 +31,17 @@ class CatalogEngine(WebScrapperEngine):
         """
         downloads = []
 
-        for name, auth in self.auths.items():
+        for name, auth in self.auths:
             header = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
             "X-Requested-With": "XMLHttpRequest",
             "Content-Type": "application/xml; charset=UTF-8",
             "Authorization": auth
             }
+            logger.debug(f"Scraping catalog for basin: {name}")
+            logger.debug(f"Using header: {header}")
             cache = CacheProvider(self.download_directory / f"catalog-cache-{name}.json")
-            scrapper = CatalogScrapper(header=header, delay=1, cache=cache, use_cache=True)
+            scrapper = CatalogScrapper(header=header, delay=0, cache=cache, use_cache=True)
             links = scrapper.scrap()
             downloads.extend([
                 DownloadDTO(

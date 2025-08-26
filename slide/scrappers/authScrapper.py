@@ -9,6 +9,9 @@ from slide.scrappers import Scrapper
 
 
 class AuthScrapper(Scrapper):
+    """
+        This class aims to scrap the auth token for each basin available at: "https://reate.cprm.gov.br/anp/TERRESTRE"
+    """
 
     def __init__(self) -> None:
         super().__init__()

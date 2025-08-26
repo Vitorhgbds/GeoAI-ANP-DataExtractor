@@ -2,10 +2,12 @@ import re
 from time import sleep
 from bs4 import BeautifulSoup
 import requests
+from slide.logger import Logger
 from slide.providers.cache import CacheProvider
 from slide.scrappers import Scrapper
 
-
+logging = Logger()
+logger = logging.get_logger()
 class CatalogScrapper(Scrapper):
 
     def __init__(self, header: dict[str,str], cache: CacheProvider, use_cache: bool = False, delay: int = 0) -> None:
@@ -34,7 +36,7 @@ class CatalogScrapper(Scrapper):
             list[str]: A list of next links to search.
             list: A list contents that match the search criteria.
         """
-        PARSER = "XML"
+        PARSER = "lxml-xml"
         METHOD = "PROPFIND"
         PAYLOAD = """<?xml version="1.0"?>
                     <d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">
@@ -97,11 +99,14 @@ class CatalogScrapper(Scrapper):
 
         while retries < max_retries:
             try:
+                logger.debug("Starting deep search...")
                 self.deep_search(self.urls, self.results)
+                logger.debug(f"Deep search completed. Found {len(self.results)} results.")
                 break
             except Exception as e:
-                print(f"Error occurred: {e}")
+                logger.error(f"Error occurred: {e}")
                 retries = retries + 1
+                logger.debug(f"Retrying {retries}/{max_retries}...")
                 continue
             finally:
                 self.cache.save({"urls": self.urls, "results": self.results})

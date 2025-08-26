@@ -3,7 +3,7 @@ import time
 import aria2p
 import socket
 from slide.database.models.download import DownloadDAO, DownloadDTO, DownloadStatus
-from slide.scrappers.downloaders import DownloadPolicy
+from slide.downloaders import DownloadPolicy
 
 
 class Aria2P(DownloadPolicy):
