@@ -1,8 +1,11 @@
+from pathlib import Path
 import re
 from time import sleep
+from typing import Tuple
 from bs4 import BeautifulSoup
 import requests
 from slide.commons import BASE_URL, WELL_URL
+from slide.database.models.download import DownloadDTO, DownloadStatus, DownloadStatus
 from slide.logger import Logger
 from slide.providers.cache import CacheProvider
 from slide.scrappers import Scrapper
@@ -11,14 +14,21 @@ logging = Logger()
 logger = logging.get_logger()
 class CatalogScrapper(Scrapper):
 
-    def __init__(self, header: dict[str,str], cache: CacheProvider, use_cache: bool = False, delay: int = 0) -> None:
+    def __init__(self, auth: Tuple[str, str], out_dir: Path, use_cache: bool = False, delay: int = 0) -> None:
         super().__init__()
-        self.delay = delay
-        self.start_url = BASE_URL + WELL_URL
-        self.headers = header
-        self.cache = cache
+        self.headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
+            "X-Requested-With": "XMLHttpRequest",
+            "Content-Type": "application/xml; charset=UTF-8",
+            "Authorization": auth
+            }
+        self.auth = auth 
+        self.out_dir = out_dir
+        self.cache = CacheProvider(out_dir / "catalog-cache.json")
         self.use_cache = use_cache
+        self.start_url = BASE_URL + WELL_URL
         self.urls = [self.start_url]
+        self.delay = delay
         self.results = []
 
 
@@ -65,7 +75,7 @@ class CatalogScrapper(Scrapper):
         return next, leaf
 
 
-    def deep_search(self, urls: list[str], results: list[str]) -> list[str]:
+    def deep_search(self) -> list[str]:
         """Perform a deep search on the provided URL.
 
         Args:
@@ -74,7 +84,6 @@ class CatalogScrapper(Scrapper):
         Returns:
             list[str]: A list of results from the deep search.
         """
-    
         while self.urls:
             current = self.urls[0]
             next, result = self.fetch(current)
@@ -111,4 +120,11 @@ class CatalogScrapper(Scrapper):
             finally:
                 self.cache.save({"urls": self.urls, "results": self.results})
 
-        return self.results
+        return [DownloadDTO(
+                url=url,
+                basin=self.auth[0],
+                name=url.split("/")[-1],
+                path=str(self.out_dir),
+                status=DownloadStatus.WAITING,
+                headers=self.headers
+                ) for url in self.results]
