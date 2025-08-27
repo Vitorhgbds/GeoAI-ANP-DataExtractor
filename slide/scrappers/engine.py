@@ -1,7 +1,7 @@
 from slide.database.models.download import DownloadDTO
 from slide.downloaders import DownloadPolicy
 from slide.logger import Logger
-from slide.scrappers import WebScrapperEngine
+from slide.scrappers import Scrapper, WebScrapperEngine
 from slide.scrappers.catalogScrapper import CatalogScrapper
 
 logging = Logger()
@@ -11,8 +11,8 @@ class Engine(WebScrapperEngine):
     This engine is responsible for managing the catalog scraping process for all basins available.
     """
 
-    def __init__(self, catalogScrapper: CatalogScrapper, downloader: DownloadPolicy) -> None:
-        super().__init__(downloader=downloader, scrappers=catalogScrapper)
+    def __init__(self, scrappers: list[Scrapper] | Scrapper, downloader: DownloadPolicy) -> None:
+        super().__init__(downloader=downloader, scrappers=scrappers)
 
     def collect(self) -> list[DownloadDTO]:
         """

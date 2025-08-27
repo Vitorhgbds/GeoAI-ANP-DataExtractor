@@ -15,7 +15,7 @@ class DownloadDTO:
     path: str
     name: str
     status: DownloadStatus  # "done", "waiting", "failed"
-    errors: Optional[str] = None
+    errors: Optional[str] | Optional[dict[str, str]] = None
     headers: Optional[str] | Optional[dict[str, str]] = None  # You can store this as JSON string if needed
     basin: Optional[str] = None
 
@@ -120,8 +120,8 @@ class DownloadDAO:
             path=row[1],
             name=row[2],
             status=DownloadStatus(row[3]),
-            errors=json.loads(row[4]) if row[4] else None,
-            headers=json.loads(row[5]) if row[5] else None,
+            errors=json.loads(row[4]) if row[4] != None else None,
+            headers=json.loads(row[5]) if row[5] != None else None,
             basin=row[6],
         ) for row in rows]
         
@@ -139,8 +139,8 @@ class DownloadDAO:
                 path=row[1],
                 name=row[2],
                 status=DownloadStatus(row[3]),
-                errors=json.loads(row[4]) if row[4] else None,
-                headers=json.loads(row[5]) if row[5] else None,
+                errors=json.loads(row[4]) if row[4] != None else None,
+                headers=json.loads(row[5]) if row[5] != None else None,
                 basin=row[6],
             )
         return None
@@ -159,8 +159,8 @@ class DownloadDAO:
                 path=row[1],
                 name=row[2],
                 status=DownloadStatus(row[3]),
-                errors=json.loads(row[4]) if row[4] else None,
-                headers=json.loads(row[5]) if row[5] else None,
+                errors=json.loads(row[4]) if row[4] != None else None,
+                headers=json.loads(row[5]) if row[5] != None else None,
                 basin=row[6],
             )
         return None

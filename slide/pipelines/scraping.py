@@ -33,7 +33,7 @@ class ANPScrapingPipeline(Pipeline):
         self.anp_scrapper = ANPScrapper()
         self.seconds_delay = seconds_delay
         self.use_cache = use_cache
-        self.dao = DownloadDAO(db_path=Path("./download.db"))
+        self.dao = DownloadDAO(db_path=Path("./downloads/download.db"))
         if not self.use_cache:
             self.dao.clean()
         self.downloader = Aria2P(cache_dao=self.dao)
@@ -227,15 +227,15 @@ class ANPScrapingPipeline(Pipeline):
         self.downloader.download(dtos)
         logger.info(":white_check_mark: Done.")
         
-        # logger.info(":cyclone: Extracting composite and conventional profile urls from catalogs...")
-        # dtos = self.dao.fetch_where(f"lower(name) LIKE '%md5%.txt'")
-        # self._fetch_profiles_links(dtos)
-        # logger.info(":white_check_mark: Done.")
+        logger.info(":cyclone: Extracting composite and conventional profile urls from catalogs...")
+        dtos = self.dao.fetch_where(f"lower(name) LIKE '%md5%.txt'")
+        self._fetch_profiles_links(dtos)
+        logger.info(":white_check_mark: Done.")
         
-        # logger.info(":cyclone: Downloading composite and conventional profiles from urls...")
-        # dtos = self.dao.fetch_where(f"lower(name) NOT LIKE '%md5%.txt' and status = '{DownloadStatus.WAITING.value}'")
-        # self.downloader.download(dtos)
-        # logger.info(":white_check_mark: Done.")
+        logger.info(":cyclone: Downloading composite and conventional profiles from urls...")
+        dtos = self.dao.fetch_where(f"lower(name) NOT LIKE '%md5%.txt' and status = '{DownloadStatus.WAITING.value}'")
+        self.downloader.download(dtos[0:10])
+        logger.info(":white_check_mark: Done.")
         
         # logger.info(":cyclone: Summarizing...")
         # #self._create_summary(catalogs_path)

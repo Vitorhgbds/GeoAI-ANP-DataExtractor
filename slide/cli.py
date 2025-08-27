@@ -10,7 +10,7 @@ logger = logging.get_logger()
 
 def scrap(data_path: str, *args, **kwargs):
     pipeline = NewScrappingPipeline() 
-    #ANPScrapingPipeline(download_directory=data_path, **kwargs)
+    #pipeline = ANPScrapingPipeline(download_directory=data_path, **kwargs)
     pipeline.run()
 
 def make_shared_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
@@ -31,7 +31,7 @@ def make_shared_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentPa
         dest="data_path",
         metavar="<PATH>",
         help="Path to ANP basin composite and conventional profile files.\nDefault: %(default)s\n\n",
-        default="./data",
+        default="./downloads",
     )
     parser.add_argument(
         "-c",

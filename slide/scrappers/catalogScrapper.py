@@ -17,10 +17,11 @@ class CatalogScrapper(Scrapper):
     def __init__(self, auth: Tuple[str, str], out_dir: Path, use_cache: bool = False, delay: int = 0) -> None:
         super().__init__()
         self.headers = {
+            'host': 'reate.cprm.gov.br',
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
             "X-Requested-With": "XMLHttpRequest",
             "Content-Type": "application/xml; charset=UTF-8",
-            "Authorization": auth
+            "Authorization": auth[1]
             }
         self.auth = auth 
         self.out_dir = out_dir
@@ -93,7 +94,7 @@ class CatalogScrapper(Scrapper):
         return self.results
     
 
-    def scrap(self) -> list[str]:
+    def scrap(self) -> list[DownloadDTO]:
         # Implement the scraping logic here
 
         if self.use_cache:
@@ -109,7 +110,7 @@ class CatalogScrapper(Scrapper):
         while retries < max_retries:
             try:
                 logger.debug("Starting deep search...")
-                self.deep_search(self.urls, self.results)
+                self.deep_search()
                 logger.debug(f"Deep search completed. Found {len(self.results)} results.")
                 break
             except Exception as e:

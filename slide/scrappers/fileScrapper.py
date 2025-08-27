@@ -17,11 +17,12 @@ class FileScrapper(Scrapper, ABC):
 
     def scrap(self) -> list[str]:
         logs: list[str] = []
-        with open(self.catalog.path + "/" + self.catalog.name, "r", encoding="utf-8", errors="ignore") as file:
+        with open(f"{self.catalog.path}/{self.catalog.name}", "r", encoding="utf-8", errors="ignore") as file:
             for line in file:
                 link = line.split("..")[-1].strip()
+                link = "/".join(link.split("/")[1:])  # Remove the first empty element
                 if self.isTargetFile(link):
-                    logs.append(BASE_URL + WELL_URL + link.replace(" ", "%20"))
+                    logs.append(f"{BASE_URL}{WELL_URL}{link.replace(' ', '%20')}")
 
         dtos = []
         for log in logs:
@@ -30,8 +31,8 @@ class FileScrapper(Scrapper, ABC):
             dtos.append(DownloadDTO(
                 url=log,
                 basin=self.catalog.basin,
-                name=log.split("/")[-1],
-                path=self.catalog.path + "/" + path,
+                name=path.split("/")[-1],
+                path=f"{self.catalog.path}/{path}",
                 status=DownloadStatus.WAITING,
                 headers=self.catalog.headers
             ))

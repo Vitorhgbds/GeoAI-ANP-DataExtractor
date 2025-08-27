@@ -6,6 +6,7 @@ from slide.database.models.download import DownloadDAO, DownloadDTO, DownloadSta
 from slide.downloaders import DownloadPolicy
 from slide.logger import Logger
 from slide.providers.progress import ProgressProvider, ProgressType, TaskID
+import traceback
 
 logging = Logger()
 logger = logging.get_logger()
@@ -46,6 +47,11 @@ class Aria2P(DownloadPolicy):
         if not self.aria2:
             self.aria2 = self.start_aria2c()
 
+        self.cache.bulk_insert(dtos)
+
+        logger.debug(f"Starting downloads with headers {dtos[0].headers}")
+        logger.debug(f"First download: {dtos[0]}")
+
         downloads = []
         download_r = []
         while len(dtos) > 0:
@@ -55,7 +61,7 @@ class Aria2P(DownloadPolicy):
                     download = self.aria2.add_uris([file.url], options={"header": header_list, "dir": str(file.path), "out": file.name})
                     downloads.append(download)
                     download_r.append(download.name)
-                    tasks[download.name] = download_progress.add_task(f"{file.name}", filename=file.name, total=download.total_length)
+                    #tasks[download.name] = download_progress.add_task(f"{file.name}", filename=file.name, total=100)
                     dtos.remove(file)
             except Exception as e:
                 # Retry adding the download after a short delay
@@ -72,20 +78,20 @@ class Aria2P(DownloadPolicy):
 
         downloads = self.aria2.get_downloads()
         logger.info(f"Tracking {len(downloads)} downloads...")
-        download_progress.start()
+        #download_progress.start()
         while len(downloads) > 0:
             try:
                 downloads = self.aria2.get_downloads()
                 for d in downloads:
-                    t = tasks[d.name]
-                    download_progress.update(t, completed=d.completed_length)
+                    #t = tasks[d.name]
+                    #download_progress.update(t, completed=d.progress, total=100, speed=d.download_speed, refresh=True)
                     is_finished = self._update_download_status(d)
                     if is_finished:
-                        download_progress.remove_task(t)
+                        #download_progress.remove_task(t)
                         self.aria2.remove([d])
                         downloads.remove(d)
             except Exception as e:
-                logger.error(f"[ERROR] Error while updating download status: {e}")
+                logger.error(f"Error while updating download status: {traceback.format_exc()}\n {e}\n")
                 time.sleep(1)
                 continue
 
@@ -93,7 +99,7 @@ class Aria2P(DownloadPolicy):
             if all([d.is_complete or d.has_failed for d in downloads]):
                 break
             time.sleep(0.5)  # Polling interval
-        download_progress.stop()
+        #download_progress.stop()
         logger.info("[✅] All downloads finished.")
         
     def _update_download_status(self, d: aria2p.Download) -> bool:
@@ -107,10 +113,10 @@ class Aria2P(DownloadPolicy):
         uri = d.files[0].uris[0].get("uri", "")
         dto = self.cache.fetch_by_url(uri)
         status = DownloadStatus.DONE if d.is_complete else DownloadStatus.WAITING
-        errors = {'status': d.error_code, 'message': d.error_message} if d.has_failed else None
+        errors: dict | None = {'status': d.error_code, 'message': d.error_message} if d.has_failed else None
         if dto:
             dto.status = status
-            dto.errors = str(errors)
+            dto.errors = errors
             self.cache.upsert_download(dto)
         else:
             self.cache.bulk_insert([DownloadDTO(
@@ -118,7 +124,7 @@ class Aria2P(DownloadPolicy):
                 path=str(d.dir),
                 name=d.name,
                 status=status,
-                errors=str(errors)
+                errors=errors
             )])
         return is_finished
     
