@@ -17,10 +17,10 @@ class CatalogEngine(WebScrapperEngine):
     """
 
     def __init__(self, auths: list[Tuple[str,str]]) -> None:
-        self.dao = DownloadDAO(db_path=Path("./download.db"))
-        self.downloader = Aria2P(cache_dao=self.dao)
-        self.auths = auths
         self.download_directory = Path("./downloads")
+        self.downloads = DownloadDAO(db_path=Path("./downloads/download.db"))
+        self.downloader = Aria2P(cache_dao=self.downloads)
+        self.auths = auths
 
     def collect(self) -> int:
         """
@@ -29,7 +29,7 @@ class CatalogEngine(WebScrapperEngine):
         Returns:
             int: The number of items collected.
         """
-        downloads = []
+        files: list[DownloadDTO] = []
 
         for name, auth in self.auths:
             header = {
@@ -39,21 +39,22 @@ class CatalogEngine(WebScrapperEngine):
             "Authorization": auth
             }
             logger.debug(f"Scraping catalog for basin: {name}")
-            logger.debug(f"Using header: {header}")
-            cache = CacheProvider(self.download_directory / f"catalog-cache-{name}.json")
+            cache = CacheProvider(self.download_directory / name / f"catalog-cache.json")
             scrapper = CatalogScrapper(header=header, delay=0, cache=cache, use_cache=True)
             links = scrapper.scrap()
-            downloads.extend([
+            files.extend([
                 DownloadDTO(
                 url=url,
                 basin=name,
                 name=url.split("/")[-1],
-                path=str(self.download_directory / name), # type: ignore
+                path=str(self.download_directory / name),
                 status=DownloadStatus.WAITING,
                 headers=header
                 ) for url in links
             ])
 
-        self.downloader.download(downloads)
+        self.downloads.bulk_insert(files)
+        dtos = self.downloads.fetch_where(f"lower(name) LIKE '%md5%.txt' and status = '{DownloadStatus.WAITING.value}'")
+        self.downloader.download(dtos)
 
-        return len(downloads)
+        return len(files)

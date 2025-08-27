@@ -4,4 +4,9 @@ PATTERN_PROFILES = r"(?i)perfil\s*(composto|convencional)"  # Matches "perfil co
 PATTERN_MD5_CATALOG = r"(?i)^md5.*\.txt$"
 PATTERNS = [PATTERN_MD5_CATALOG]
 
+BASE_URL = "https://reate.cprm.gov.br"
+WELL_URL = "/arquivos/public.php/webdav/"
+BASINS_URL = "/anp/TERRESTRE"
+
+
 BAR_FORMAT = "{desc:<}\n{bar} {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]"

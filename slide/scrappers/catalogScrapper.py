@@ -2,6 +2,7 @@ import re
 from time import sleep
 from bs4 import BeautifulSoup
 import requests
+from slide.commons import BASE_URL, WELL_URL
 from slide.logger import Logger
 from slide.providers.cache import CacheProvider
 from slide.scrappers import Scrapper
@@ -13,8 +14,7 @@ class CatalogScrapper(Scrapper):
     def __init__(self, header: dict[str,str], cache: CacheProvider, use_cache: bool = False, delay: int = 0) -> None:
         super().__init__()
         self.delay = delay
-        self.base_url = "https://reate.cprm.gov.br"
-        self.start_url = self.base_url + "/arquivos/public.php/webdav/"
+        self.start_url = BASE_URL + WELL_URL
         self.headers = header
         self.cache = cache
         self.use_cache = use_cache
@@ -58,7 +58,7 @@ class CatalogScrapper(Scrapper):
 
         soup = BeautifulSoup(response.content, PARSER)
         hrefs = [href.text.strip() for href in soup.find_all(SEARCH_TAG)]
-        links = [str(self.base_url + href) for href in hrefs]
+        links = [str(BASE_URL + href) for href in hrefs]
 
         leaf = [link for link in links if self.isCatalogFile(link.split("/")[-1])]
         next = [link for link in links[1:] if link.endswith("/")] if len(links) > 1 and not leaf else []

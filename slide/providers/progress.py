@@ -9,6 +9,7 @@ from rich.progress import (
     DownloadColumn,
     TransferSpeedColumn,
     TimeRemainingColumn,
+    TaskID
 )
 from rich.console import Console
 from rich.rule import Rule
@@ -107,7 +108,7 @@ class ProgressProvider:
     
     def get_live(self):
         return Live(self.group, console=Console(stderr=True))
-    
+
     def get_progress(self, progress_type: ProgressType):
        match progress_type:
             case ProgressType.LABEL:

@@ -4,14 +4,21 @@ import aria2p
 import socket
 from slide.database.models.download import DownloadDAO, DownloadDTO, DownloadStatus
 from slide.downloaders import DownloadPolicy
+from slide.logger import Logger
+from slide.providers.progress import ProgressProvider, ProgressType, TaskID
 
-
+logging = Logger()
+logger = logging.get_logger()
+progress = ProgressProvider()
+download_progress = progress.get_progress(ProgressType.DOWNLOAD)
+tasks: dict[str, TaskID] = {}
 class Aria2P(DownloadPolicy):
     def __init__(self, rpc_port: int = 6800, cache_dao: DownloadDAO | None = None):
         self.rpc_port = rpc_port
         self.aria2c_process = None
         self.aria2: aria2p.API | None = None
         self.cache: DownloadDAO = cache_dao if cache_dao else DownloadDAO()
+        self.downloads_monitoring_process = None
 
     def start_aria2c(self) -> aria2p.API:
         # Start aria2c with RPC enabled
@@ -47,11 +54,12 @@ class Aria2P(DownloadPolicy):
                     header_list = [f"{k}: {v}" for k, v in file.headers.items()] if isinstance(file.headers, dict) else []
                     download = self.aria2.add_uris([file.url], options={"header": header_list, "dir": str(file.path), "out": file.name})
                     downloads.append(download)
-                    download_r.append(file.name)
+                    download_r.append(download.name)
+                    tasks[download.name] = download_progress.add_task(f"{file.name}", filename=file.name, total=download.total_length)
                     dtos.remove(file)
             except Exception as e:
                 # Retry adding the download after a short delay
-                print(f"[ERROR] Error while adding download: {e}")
+                logger.error(f"Error while adding download: {e}")
                 time.sleep(1)
                 continue
 
@@ -63,25 +71,30 @@ class Aria2P(DownloadPolicy):
             self.aria2 = self.start_aria2c()
 
         downloads = self.aria2.get_downloads()
-        print(f"[INFO] Tracking {len(downloads)} downloads...")
+        logger.info(f"Tracking {len(downloads)} downloads...")
+        download_progress.start()
         while len(downloads) > 0:
             try:
                 downloads = self.aria2.get_downloads()
                 for d in downloads:
+                    t = tasks[d.name]
+                    download_progress.update(t, completed=d.completed_length)
                     is_finished = self._update_download_status(d)
                     if is_finished:
+                        download_progress.remove_task(t)
                         self.aria2.remove([d])
                         downloads.remove(d)
             except Exception as e:
-                print(f"[ERROR] Error while updating download status: {e}")
+                logger.error(f"[ERROR] Error while updating download status: {e}")
                 time.sleep(1)
                 continue
-                
-                
+
             # Check if all downloads are finished
             if all([d.is_complete or d.has_failed for d in downloads]):
                 break
-        print("[✅] All downloads finished.")
+            time.sleep(0.5)  # Polling interval
+        download_progress.stop()
+        logger.info("[✅] All downloads finished.")
         
     def _update_download_status(self, d: aria2p.Download) -> bool:
         """Update the status of a single download."""
@@ -125,4 +138,4 @@ class Aria2P(DownloadPolicy):
         if self.aria2c_process:
             self.aria2c_process.terminate()
             self.aria2c_process = None
-            print("[INFO] aria2c stopped.")
+            logger.info("aria2c stopped.")

@@ -15,7 +15,7 @@ import re
 from slide.commons import PATTERN_COMPOSITE_PROFILE, PATTERN_CONVENTIONAL_PROFILE
 from slide.crawler.anp import ANPScrapper, ANPSpider
 from slide.database.models.download import DownloadDAO, DownloadDTO, DownloadStatus
-from slide.managers.downloader.strategies.aria2p import Aria2P
+from slide.downloaders.aria2p import Aria2P
 from slide.pipelines.pipeline import Pipeline
 from slide.logger import Logger
 from slide.providers.cache import CacheProvider
