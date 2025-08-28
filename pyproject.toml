@@ -16,6 +16,8 @@ lxml = "^5.3.0"
 tqdm = "^4.67.1"
 aiohttp = "^3.11.12"
 aria2p = {extras = ["tui"], version = "^0.12.1"}
+ipykernel = "^6.30.1"
+pandas = "^2.3.2"
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = ">=4.1.0,<5.0.0"
