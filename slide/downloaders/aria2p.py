@@ -49,9 +49,6 @@ class Aria2P(DownloadPolicy):
 
         self.cache.bulk_insert(dtos)
 
-        logger.debug(f"Starting downloads with headers {dtos[0].headers}")
-        logger.debug(f"First download: {dtos[0]}")
-
         downloads = []
         download_r = []
         while len(dtos) > 0:

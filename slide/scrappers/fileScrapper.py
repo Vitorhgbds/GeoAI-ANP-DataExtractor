@@ -20,7 +20,7 @@ class FileScrapper(Scrapper, ABC):
         with open(f"{self.catalog.path}/{self.catalog.name}", "r", encoding="utf-8", errors="ignore") as file:
             for line in file:
                 link = line.split("..")[-1].strip()
-                link = "/".join(link.split("/")[1:])  # Remove the first empty element
+                link = "/".join(link.split("/")[2:])  # Remove the first empty element and basin name.
                 if self.isTargetFile(link):
                     logs.append(f"{BASE_URL}{WELL_URL}{link.replace(' ', '%20')}")
 
@@ -46,4 +46,4 @@ class LogScrapper(FileScrapper):
 
 class AgpScrapper(FileScrapper):
     def isTargetFile(self, name: str) -> bool:
-        return bool(re.search(r"(?i)perfil\s*agregado", name.strip()))
+        return bool(re.search(r"(?i)agp", name.strip()))
