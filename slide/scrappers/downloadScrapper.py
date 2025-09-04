@@ -1,13 +1,12 @@
 
 from abc import ABC, abstractmethod
-from pathlib import Path
 import re
 from slide.commons import BASE_URL, WELL_URL
 from slide.database.models.download import DownloadDTO, DownloadStatus
 from slide.scrappers import Scrapper
 
 
-class FileScrapper(Scrapper, ABC):
+class DownloadScrapper(Scrapper, ABC):
     def __init__(self, catalog: DownloadDTO):
         self.catalog = catalog
 
@@ -15,7 +14,7 @@ class FileScrapper(Scrapper, ABC):
     def isTargetFile(self, name: str) -> bool:
         pass
 
-    def scrap(self) -> list[str]:
+    def scrap(self) -> list[DownloadDTO]:
         logs: list[str] = []
         with open(f"{self.catalog.path}/{self.catalog.name}", "r", encoding="utf-8", errors="ignore") as file:
             for line in file:
@@ -27,11 +26,13 @@ class FileScrapper(Scrapper, ABC):
         dtos = []
         for log in logs:
             directory_tree = log.split("/POCO/")[-1].split("/")
-            path = "/".join(directory_tree[0:])
+            path = "/".join(directory_tree[0:-1])
+            if BASE_URL in path:
+                continue
             dtos.append(DownloadDTO(
                 url=log,
                 basin=self.catalog.basin,
-                name=path.split("/")[-1],
+                name=log.split("/")[-1],
                 path=f"{self.catalog.path}/{path}",
                 status=DownloadStatus.WAITING,
                 headers=self.catalog.headers
@@ -40,10 +41,10 @@ class FileScrapper(Scrapper, ABC):
         return dtos 
     
 
-class LogScrapper(FileScrapper):
+class LogScrapper(DownloadScrapper):
     def isTargetFile(self, name: str) -> bool:
         return bool(re.search(r"(?i)perfil\s*(composto|convencional)", name.strip()))
 
-class AgpScrapper(FileScrapper):
+class AgpScrapper(DownloadScrapper):
     def isTargetFile(self, name: str) -> bool:
         return bool(re.search(r"(?i)agp", name.strip()))

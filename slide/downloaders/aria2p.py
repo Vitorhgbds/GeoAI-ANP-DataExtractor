@@ -1,3 +1,4 @@
+from pathlib import Path
 import subprocess
 import time
 import aria2p
@@ -14,12 +15,13 @@ progress = ProgressProvider()
 download_progress = progress.get_progress(ProgressType.DOWNLOAD)
 tasks: dict[str, TaskID] = {}
 class Aria2P(DownloadPolicy):
-    def __init__(self, rpc_port: int = 6800, cache_dao: DownloadDAO | None = None):
+    def __init__(self, overwrite: bool = False, rpc_port: int = 6800, cache_dao: DownloadDAO | None = None):
         self.rpc_port = rpc_port
         self.aria2c_process = None
         self.aria2: aria2p.API | None = None
         self.cache: DownloadDAO = cache_dao if cache_dao else DownloadDAO()
         self.downloads_monitoring_process = None
+        self.overwrite = overwrite
 
     def start_aria2c(self) -> aria2p.API:
         # Start aria2c with RPC enabled
@@ -55,6 +57,9 @@ class Aria2P(DownloadPolicy):
             try:
                 for file in dtos:
                     header_list = [f"{k}: {v}" for k, v in file.headers.items()] if isinstance(file.headers, dict) else []
+                    if not self.overwrite and (Path(file.path) / file.name).exists():
+                        dtos.remove(file)
+                        continue
                     download = self.aria2.add_uris([file.url], options={"header": header_list, "dir": str(file.path), "out": file.name})
                     downloads.append(download)
                     download_r.append(download.name)

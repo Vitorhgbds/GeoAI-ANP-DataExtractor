@@ -1,13 +1,17 @@
 from pathlib import Path
+
+from tqdm import tqdm
+from slide.database.models.agp import AgpLithologyDAO, AgpSummaryDAO
 from slide.database.models.download import DownloadDAO
 from slide.downloaders.aria2p import Aria2P
 from slide.logger import Logger
-from slide.pipelines.pipeline import Pipeline
+from slide.pipelines import Pipeline
 from slide.scrappers import Scrapper
+from slide.scrappers.agpScrapper import Lithology, Summary
 from slide.scrappers.authScrapper import AuthScrapper
 from slide.scrappers.engine import Engine
 from slide.scrappers.catalogScrapper import CatalogScrapper
-from slide.scrappers.fileScrapper import AgpScrapper, LogScrapper
+from slide.scrappers.downloadScrapper import AgpScrapper
 
 logging = Logger()
 logger = logging.get_logger()
@@ -34,12 +38,13 @@ class ScrappingPipeline(Pipeline):
         logger.info("Starting catalog scrappers for all basins...")
         fuel: list[Scrapper] = []
         for auth in auths:
-            logger.debug(f" - {auth[0]}: {auth[1]}")
-            if auth[0] in catalog_map and Path(catalog_map[auth[0]]).exists():
-                logger.debug(f"   -> Catalog already exists at {catalog_map[auth[0]]}, skipping...")
+            basin, token = auth
+            logger.debug(f" Basin and token {basin}: {token}")
+            if basin in catalog_map and Path(catalog_map[basin]).exists():
+                logger.debug(f"   -> Catalog already exists at {catalog_map[basin]}, skipping...")
                 continue
             else:
-                fuel.append(CatalogScrapper(auth, self.out_dir / auth[0], use_cache=True))
+                fuel.append(CatalogScrapper(auth, self.out_dir / basin, use_cache=True))
         logger.info(f"Initialized {len(fuel)} catalog scrappers.")
 
         logger.info("Starting catalog scraping engine...")
@@ -54,6 +59,29 @@ class ScrappingPipeline(Pipeline):
 
         logger.info("Starting agp scrappers for all catalogs...")
         fuel = [AgpScrapper(catalog) for catalog in catalogs if (Path(catalog.path) / catalog.name).exists()]
-        engine = Engine(scrappers=fuel, downloader=Aria2P(cache_dao=dao))
-        engine.collect()
+        engine = Engine(scrappers=fuel, downloader=Aria2P(overwrite=False, cache_dao=dao))
+        files = engine.collect()
         logger.info("Agp scraping completed.")
+
+        logger.info("Starting agp summary scrappers for all agp files...")
+        files = dao.fetch_where(f"lower(path) LIKE '%agp%' or lower(name) LIKE '%agp%.txt'")
+        logger.info(f"Found {len(files)} agp files to process.")
+        fuel = [Summary(Path(agp.path) / agp.name) for agp in tqdm(files, desc="Total agp Scrappers to initialize") if (Path(agp.path) / agp.name).exists()]
+        engine = Engine(scrappers=fuel)
+        summaries_dto = engine.collect()
+        logger.info(f"Found {len(summaries_dto)} agp files with summary to process.")
+        summaries_dao = AgpSummaryDAO(self.out_dir / "agp.db")
+        summaries_dao.bulk_insert(summaries_dto)
+        summaries_dao.close()
+        logger.info("Agp summary scraping completed and added to database.")
+
+        logger.info("Starting lithology scrappers for all agp files...")
+        logger.info(f"Found {len(files)} agp files to process.")
+        fuel = [Lithology(Path(agp.path) / agp.name) for agp in tqdm(files, desc="Total agp Scrappers to initialize") if (Path(agp.path) / agp.name).exists()]
+        engine = Engine(scrappers=fuel)
+        lithologies_dto = engine.collect()
+        lithologies_dao = AgpLithologyDAO(self.out_dir / "agp.db")
+        logger.info(f"Found {len(lithologies_dto)} agp files with lithology entries to process.")
+        lithologies_dao.bulk_insert(lithologies_dto)
+        lithologies_dao.close()
+        logger.info("Lithology scraping completed and added to database.")
