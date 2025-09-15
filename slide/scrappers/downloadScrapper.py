@@ -2,19 +2,23 @@
 from abc import ABC, abstractmethod
 import re
 from slide.commons import BASE_URL, WELL_URL
-from slide.database.models.download import DownloadDTO, DownloadStatus
+from slide.database.models.download import AGPDownloadDTO, ANPDownloadDTO, CatalogDownloadDTO, DownloadDTO, DownloadStatus, LogDownloadDTO
 from slide.scrappers import Scrapper
 
 
 class DownloadScrapper(Scrapper, ABC):
-    def __init__(self, catalog: DownloadDTO):
+    def __init__(self, catalog: CatalogDownloadDTO):
         self.catalog = catalog
 
     @abstractmethod
     def isTargetFile(self, name: str) -> bool:
         pass
 
-    def scrap(self) -> list[DownloadDTO]:
+    @property
+    def downloadDTO(self) -> ANPDownloadDTO:
+        return ANPDownloadDTO
+
+    def scrap(self) -> list[ANPDownloadDTO]:
         logs: list[str] = []
         with open(f"{self.catalog.path}/{self.catalog.name}", "r", encoding="utf-8", errors="ignore") as file:
             for line in file:
@@ -29,22 +33,42 @@ class DownloadScrapper(Scrapper, ABC):
             path = "/".join(directory_tree[0:-1])
             if BASE_URL in path:
                 continue
-            dtos.append(DownloadDTO(
+            dtos.append(self.downloadDTO(
                 url=log,
                 basin=self.catalog.basin,
                 name=log.split("/")[-1],
                 path=f"{self.catalog.path}/{path}",
                 status=DownloadStatus.WAITING,
-                headers=self.catalog.headers
+                headers=self.catalog.headers,
+                well=log.split("/")[-3]
             ))
 
         return dtos 
     
 
 class LogScrapper(DownloadScrapper):
+
+    @property
+    def downloadDTO(self) -> LogDownloadDTO:
+        return LogDownloadDTO
+    
     def isTargetFile(self, name: str) -> bool:
         return bool(re.search(r"(?i)perfil\s*(composto|convencional)", name.strip()))
 
+class ConventionalLogScrapper(LogScrapper):
+    def isTargetFile(self, name: str) -> bool:
+        return bool(re.search(r"(?i)perfil\s*convencional", name.strip()))
+
+class CompositeLogScrapper(LogScrapper):
+    def isTargetFile(self, name: str) -> bool:
+        return bool(re.search(r"(?i)perfil\s*composto", name.strip()))
+
+
 class AgpScrapper(DownloadScrapper):
+
+    @property
+    def downloadDTO(self) -> AGPDownloadDTO:
+        return AGPDownloadDTO
+    
     def isTargetFile(self, name: str) -> bool:
         return bool(re.search(r"(?i)agp", name.strip()))

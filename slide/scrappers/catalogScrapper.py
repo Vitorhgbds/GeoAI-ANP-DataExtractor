@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 import re
 from time import sleep
@@ -5,7 +6,7 @@ from typing import Tuple
 from bs4 import BeautifulSoup
 import requests
 from slide.commons import BASE_URL, WELL_URL
-from slide.database.models.download import DownloadDTO, DownloadStatus, DownloadStatus
+from slide.database.models.download import CatalogDownloadDTO, DownloadDTO, DownloadStatus, DownloadStatus
 from slide.logger import Logger
 from slide.providers.cache import CacheProvider
 from slide.scrappers import Scrapper
@@ -94,7 +95,7 @@ class CatalogScrapper(Scrapper):
         return self.results
     
 
-    def scrap(self) -> list[DownloadDTO]:
+    def scrap(self) -> list[CatalogDownloadDTO]:
         # Implement the scraping logic here
 
         if self.use_cache:
@@ -121,11 +122,11 @@ class CatalogScrapper(Scrapper):
             finally:
                 self.cache.save({"urls": self.urls, "results": self.results})
 
-        return [DownloadDTO(
+        return [CatalogDownloadDTO(
                 url=url,
                 basin=self.auth[0],
                 name=url.split("/")[-1],
                 path=str(self.out_dir),
-                status=DownloadStatus.WAITING,
-                headers=self.headers
+                status=DownloadStatus.WAITING.value,
+                headers=json.dumps(self.headers)
                 ) for url in self.results]

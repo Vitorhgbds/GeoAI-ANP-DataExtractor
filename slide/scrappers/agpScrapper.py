@@ -94,7 +94,7 @@ class Lithology(AgpTableScrapper):
 
     @property
     def table(self) -> re.Pattern:
-        return re.compile(r"LITOLOGIA -\s*\n(?:-+\s*\n)?\s*(.*?)(?=\n\s*\n|$)", re.DOTALL)
+        return re.compile(r"LITOLOGIA -(?: \*\*\* VALORES VERTICALIZADOS \*\*\*)?\s*\n(?:-+\s*\n)?\s*(.*?)(?=\n\s*\n|$)", re.DOTALL)
 
     @property
     def rows(self) -> re.Pattern:
@@ -114,8 +114,8 @@ class Lithology(AgpTableScrapper):
             basin = self.basin,
             well = self.well,
             id = cod,
-            top = topo,
-            bottom = base,
+            top = topo if topo else None,
+            bottom = base if base else None,
             rock = rocha,
             color = cor,
             hue = tonalidade,

@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 import subprocess
 import time
@@ -39,7 +40,7 @@ class Aria2P(DownloadPolicy):
             "--max-download-result=16000",   # allow tracking 15k+ completed downloads
             "--quiet=true"
         ])
-        self._wait_for_server_ready(timeout=15)
+        self.__wait_for_server_ready(timeout=15)
 
         client = aria2p.Client(host="http://localhost", port=self.rpc_port)
         return aria2p.API(client)
@@ -56,7 +57,8 @@ class Aria2P(DownloadPolicy):
         while len(dtos) > 0:
             try:
                 for file in dtos:
-                    header_list = [f"{k}: {v}" for k, v in file.headers.items()] if isinstance(file.headers, dict) else []
+                    headers = json.loads(file.headers) if file.headers else {}
+                    header_list = [f"{k}: {v}" for k, v in headers.items()] if isinstance(headers, dict) else []
                     if not self.overwrite and (Path(file.path) / file.name).exists():
                         dtos.remove(file)
                         continue
@@ -87,7 +89,7 @@ class Aria2P(DownloadPolicy):
                 for d in downloads:
                     #t = tasks[d.name]
                     #download_progress.update(t, completed=d.progress, total=100, speed=d.download_speed, refresh=True)
-                    is_finished = self._update_download_status(d)
+                    is_finished = self.__update_download_status(d)
                     if is_finished:
                         #download_progress.remove_task(t)
                         self.aria2.remove([d])
@@ -104,7 +106,7 @@ class Aria2P(DownloadPolicy):
         #download_progress.stop()
         logger.info("[✅] All downloads finished.")
         
-    def _update_download_status(self, d: aria2p.Download) -> bool:
+    def __update_download_status(self, d: aria2p.Download) -> bool:
         """Update the status of a single download."""
         if not self.aria2:
             self.aria2 = self.start_aria2c()
@@ -114,23 +116,23 @@ class Aria2P(DownloadPolicy):
             return is_finished
         uri = d.files[0].uris[0].get("uri", "")
         dto = self.cache.fetch_by_url(uri)
-        status = DownloadStatus.DONE if d.is_complete else DownloadStatus.WAITING
+        status = DownloadStatus.DONE.value if d.is_complete else DownloadStatus.WAITING.value
         errors: dict | None = {'status': d.error_code, 'message': d.error_message} if d.has_failed else None
         if dto:
             dto.status = status
-            dto.errors = errors
-            self.cache.upsert_download(dto)
+            dto.errors = json.dumps(errors)
+            self.cache.upsert(dto)
         else:
             self.cache.bulk_insert([DownloadDTO(
                 url=self.aria2.client.get_uris(d.gid).get("uri", ""),
                 path=str(d.dir),
                 name=d.name,
                 status=status,
-                errors=errors
+                errors=json.dumps(errors) if errors else None,
             )])
         return is_finished
     
-    def _wait_for_server_ready(self, timeout=10, interval=0.5):
+    def __wait_for_server_ready(self, timeout=10, interval=0.5):
         """Waits until the aria2 RPC server is accepting connections."""
         start_time = time.time()
         while time.time() - start_time < timeout:
