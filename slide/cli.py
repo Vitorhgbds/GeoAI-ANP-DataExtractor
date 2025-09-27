@@ -1,15 +1,71 @@
 import argparse
 import os, sys
 
-from slide.pipelines.scrapping import ScrappingPipeline
+from slide.database.collectionPolicy import AgpCollectionPolicy, LogCollectionPolicy
+from slide.database.models.agp import AgpLithologyDAO, AgpSummaryDAO
+from slide.database.models.log import LogDAO
+from slide.feature.agpExtractionPolicy import Lithology, Summary
+from slide.feature.featureExtractionEngine import FeatureEngine
+from slide.feature.logExtractionPolicy import LogExtractionPolicy
 from slide.logger import Logger
+from slide.downloaders import Aria2P
+from slide.webscrapper import CatalogScrapper, AgpScrapper, WebScrapperEngine
+from slide.database import AGPDownloadDAO, CatalogDownloadDAO, LogDownloadDAO
+from slide.webscrapper import ConventionalLogScrapper
 
 logging = Logger()
 logger = logging.get_logger()
 
-def scrap(data_path: str, *args, **kwargs):
-    pipeline = ScrappingPipeline(data_path) 
-    pipeline.run()
+
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ("yes", "true", "t", "y", "1"):
+        return True
+    return False
+
+
+def scrap_catalogs(data_path: str, download: bool, *args, **kwargs):
+    scrapper = CatalogScrapper(out_dir=data_path)
+    dao = CatalogDownloadDAO(f"{data_path}/download.db")
+    downloader = Aria2P(cache_dao=dao) if download else None
+    WebScrapperEngine(scrappers=scrapper, dao=dao, downloader=downloader).collect()
+
+def scrap_agp(data_path: str, download: bool, *args, **kwargs):
+    c_dao = CatalogDownloadDAO(f"{data_path}/download.db")
+    scrapper = [AgpScrapper(c) for c in c_dao.fetch_all()]
+    dao = AGPDownloadDAO(f"{data_path}/download.db")
+    downloader = Aria2P(cache_dao=dao) if download else None
+    WebScrapperEngine(scrappers=scrapper, dao=dao, downloader=downloader).collect()
+
+def scrap_conventional_logs(data_path: str, download: bool, *args, **kwargs):
+    c_dao = CatalogDownloadDAO(f"{data_path}/download.db")
+    scrapper = [ConventionalLogScrapper(c) for c in c_dao.fetch_all()]
+    dao = LogDownloadDAO(f"{data_path}/download.db")
+    downloader = Aria2P(cache_dao=dao) if download else None
+    WebScrapperEngine(scrappers=scrapper, dao=dao, downloader=downloader).collect()
+
+def build_agp_lithology(data_path: str, *args, **kwargs):
+    dao = AgpLithologyDAO(f"{data_path}/download.db")
+    collection_policy = AgpCollectionPolicy(f"{data_path}/download.db")
+    extraction_policy = Lithology()
+    engine = FeatureEngine(policy=extraction_policy, data_collection_policy=collection_policy, dao=dao)
+    engine.collect()
+
+def build_agp_summary(data_path: str, *args, **kwargs):
+    dao = AgpSummaryDAO(f"{data_path}/download.db")
+    collection_policy = AgpCollectionPolicy(f"{data_path}/download.db")
+    extraction_policy = Summary()
+    engine = FeatureEngine(policy=extraction_policy, data_collection_policy=collection_policy, dao=dao)
+    engine.collect()
+
+def build_conventional_logs(data_path: str, *args, **kwargs):
+    dao = LogDAO(f"{data_path}/download.db")
+    collection_policy = LogCollectionPolicy(f"{data_path}/download.db")
+    extraction_policy = LogExtractionPolicy()
+    engine = FeatureEngine(policy=extraction_policy, data_collection_policy=collection_policy, dao=dao)
+    engine.collect()
+
 
 def make_shared_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
     parser.add_argument(
@@ -33,48 +89,108 @@ def make_shared_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentPa
     )
     return parser
 
+def make_scrap_subparsers() -> dict:
+    scrap_subparsers = {}
+    scrap_subparsers["catalogs"] = {
+        "help": "Scrap the catalogs from ANP basins database",
+        "description": "Create a spider to peform webscrapping of catalogs at ANP basins database.",
+        "func": scrap_catalogs,
+    }
+    scrap_subparsers["agp"] = {
+        "help": "Scrap the AGP files from ANP basins database",
+        "description": "Create a spider to peform webscrapping of AGP files at ANP basins database.",
+        "func": scrap_agp,
+    }
+    scrap_subparsers["conventional-logs"] = {
+        "help": "Scrap the conventional logs from ANP basins database",
+        "description": "Create a spider to peform webscrapping of conventional logs at ANP basins database.",
+        "func": scrap_conventional_logs,
+    }
+    return scrap_subparsers
+
+def make_scrap_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
+    parser.add_argument(
+        "--download",
+        type=str2bool,
+        dest="download",
+        metavar="<DOWNLOAD>",
+        help="Enable downloading of files. (yes/no, true/false, 1/0)",
+        default=True,
+    )
+
+def make_feature_subparsers() -> dict:
+    feature_subparsers = {}
+    feature_subparsers["agp-lithology"] = {
+        "help": "Build the AGP lithology feature dataset from downloaded AGP files",
+        "description": "Create a feature extraction engine to build the AGP lithology dataset from downloaded AGP files.",
+        "func": build_agp_lithology,
+    }
+    feature_subparsers["agp-summary"] = {
+        "help": "Build the AGP summary feature dataset from downloaded AGP files",
+        "description": "Create a feature extraction engine to build the AGP summary dataset from downloaded AGP files.",
+        "func": build_agp_summary,
+    }
+    feature_subparsers["conventional-logs"] = {
+        "help": "Build the conventional logs feature dataset from downloaded conventional log files",
+        "description": "Create a feature extraction engine to build the conventional logs dataset from downloaded conventional log files.",
+        "func": build_conventional_logs,
+    }
+    return feature_subparsers
+
 def build_argparser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="SLIDE: A command line tool for Smart Line Identification and Data Extraction",
-        formatter_class=argparse.RawTextHelpFormatter,
+        description="SLIDE: A command line tool for Smart Line Identification and Data Extraction"
     )
     parser = make_shared_commands(parser)
 
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers = parser.add_subparsers(dest="command", required=True, help="Main commands")
 
-    parent_parser = argparse.ArgumentParser(add_help=False)
-
+    # Scrap command
     parser_scrap = subparsers.add_parser(
         "scrap",
-        help="Scrap the latest ANP basin composite and conventional profiles.",
-        description="Create a spider to peform webscrapping at ANP basins database.",
-        parents=[parent_parser],
+        help="Scrap the dataset from ANP basins database",
+        description="Create a spider to peform webscrapping at ANP basins database."
     )
-    parser_scrap.add_argument(
-        "-s",
-        "--seconds-delay",
-        type=float,
-        dest="seconds_delay",
-        metavar="<SECONDS>",
-        help="Ban prevention delay in seconds\nDefault: %(default)s\n\n",
-        default=0.0,
+
+    scrap_subparsers = parser_scrap.add_subparsers(dest="scrap_type", required=True, help="Scrap subcommands")
+
+    for name, opts in make_scrap_subparsers().items():
+        sub = scrap_subparsers.add_parser(
+            name,
+            help=opts["help"],
+            description=opts["description"]
+        )
+        sub.set_defaults(func=opts["func"])
+        sub = make_scrap_commands(sub)
+
+    parser_scrap = subparsers.add_parser(
+        "feature",
+        help="Build the feature dataset from downloaded files",
+        description="Create a feature extraction engine to build the dataset from downloaded files."
     )
+
+    scrap_subparsers = parser_scrap.add_subparsers(dest="feature_type", required=True, help="Feature subcommands")
+
+    for name, opts in make_feature_subparsers().items():
+        sub = scrap_subparsers.add_parser(
+            name,
+            help=opts["help"],
+            description=opts["description"]
+        )
+        sub.set_defaults(func=opts["func"])
+
     return parser
 
 def cli() -> None:
     """Main entry point for the slide command line interface."""
     parser = build_argparser()
-
+    parser.formatter_class = argparse.ArgumentDefaultsHelpFormatter
     args = parser.parse_args()
     args_dict = vars(args).copy()
     logging.set_level(args_dict.pop("log_level"))
 
     try:
-        match args.command:
-            case "scrap":
-                scrap(**args_dict)
-            case _:
-                parser.print_help()
+        args.func(**args_dict)
     except Exception as e:
         raise
     os._exit(0)

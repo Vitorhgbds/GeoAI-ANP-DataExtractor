@@ -6,7 +6,7 @@ from pathlib import Path
 import sqlite3
 from typing import Optional
 
-from slide.database import BaseDAO, BaseDTO
+from slide.database.models.base import BaseDAO, BaseDTO
 
 
 class AgpSummaryDTO(BaseDTO):

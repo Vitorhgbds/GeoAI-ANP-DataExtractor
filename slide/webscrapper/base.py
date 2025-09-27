@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 from slide.downloaders import DownloadPolicy
 
-
 class Scrapper(ABC):
 
     @abstractmethod
@@ -15,7 +14,7 @@ class Scrapper(ABC):
         pass
 
 
-class WebScrapperEngine(ABC):
+class WebScrapper(ABC):
     """
     Abstract class for web scrapers.
     """

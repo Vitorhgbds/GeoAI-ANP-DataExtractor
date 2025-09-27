@@ -1,14 +1,18 @@
-
-
+from abc import ABC, abstractmethod
 import base64
 from typing import Tuple
 
 from bs4 import BeautifulSoup, Tag
 import requests
-from slide.scrappers import Scrapper
 
 
-class AuthScrapper(Scrapper):
+class AuthPolicy(ABC):
+    
+    @abstractmethod
+    def get(self) -> list:
+        pass
+
+class ANPAuthPolicy(AuthPolicy):
     """
         This class aims to scrap the auth token for each basin available at: "https://reate.cprm.gov.br/anp/TERRESTRE"
     """
@@ -54,7 +58,7 @@ class AuthScrapper(Scrapper):
 
         return basin_links
 
-    def scrap(self) -> list[Tuple[str, str]]:
+    def get(self) -> list[Tuple[str, str]]:
         """
         Scrape the authentication headers for each basin link.
 

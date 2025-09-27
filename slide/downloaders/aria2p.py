@@ -5,7 +5,7 @@ import time
 import aria2p
 import socket
 from slide.database.models.download import DownloadDAO, DownloadDTO, DownloadStatus
-from slide.downloaders import DownloadPolicy
+from slide.downloaders.downloadPolicy import DownloadPolicy
 from slide.logger import Logger
 from slide.providers.progress import ProgressProvider, ProgressType, TaskID
 import traceback
@@ -50,8 +50,6 @@ class Aria2P(DownloadPolicy):
         if not self.aria2:
             self.aria2 = self.start_aria2c()
 
-        self.cache.bulk_insert(dtos)
-
         downloads = []
         download_r = []
         while len(dtos) > 0:
@@ -62,7 +60,7 @@ class Aria2P(DownloadPolicy):
                     if not self.overwrite and (Path(file.path) / file.name).exists():
                         dtos.remove(file)
                         continue
-                    download = self.aria2.add_uris([file.url], options={"header": header_list, "dir": str(file.path), "out": file.name})
+                    download = self.aria2.add_uris([file.url], options={"header": header_list, "dir": str(file.path), "out": file.name, "pause": True})
                     downloads.append(download)
                     download_r.append(download.name)
                     #tasks[download.name] = download_progress.add_task(f"{file.name}", filename=file.name, total=100)
@@ -72,7 +70,7 @@ class Aria2P(DownloadPolicy):
                 logger.error(f"Error while adding download: {e}")
                 time.sleep(1)
                 continue
-
+        self.aria2.resume_all()
         self.wait_monitor_downloads()
         return download_r
 

@@ -1,12 +1,11 @@
-
 from abc import ABC, abstractmethod
 import re
 from slide.commons import BASE_URL, WELL_URL
-from slide.database.models.download import AGPDownloadDTO, ANPDownloadDTO, CatalogDownloadDTO, DownloadDTO, DownloadStatus, LogDownloadDTO
-from slide.scrappers import Scrapper
+from slide.database.models.download import AGPDownloadDTO, ANPDownloadDTO, CatalogDownloadDTO, DownloadDAO, DownloadStatus, LogDownloadDTO
+from . import Scrapper
 
 
-class DownloadScrapper(Scrapper, ABC):
+class FileScrapper(Scrapper, ABC):
     def __init__(self, catalog: CatalogDownloadDTO):
         self.catalog = catalog
 
@@ -17,6 +16,10 @@ class DownloadScrapper(Scrapper, ABC):
     @property
     def downloadDTO(self) -> ANPDownloadDTO:
         return ANPDownloadDTO
+    
+    @property
+    def downloadDAO(self) -> DownloadDAO:
+        return DownloadDAO
 
     def scrap(self) -> list[ANPDownloadDTO]:
         logs: list[str] = []
@@ -46,7 +49,7 @@ class DownloadScrapper(Scrapper, ABC):
         return dtos 
     
 
-class LogScrapper(DownloadScrapper):
+class LogScrapper(FileScrapper):
 
     @property
     def downloadDTO(self) -> LogDownloadDTO:
@@ -64,7 +67,7 @@ class CompositeLogScrapper(LogScrapper):
         return bool(re.search(r"(?i)perfil\s*composto", name.strip()))
 
 
-class AgpScrapper(DownloadScrapper):
+class AgpScrapper(FileScrapper):
 
     @property
     def downloadDTO(self) -> AGPDownloadDTO:

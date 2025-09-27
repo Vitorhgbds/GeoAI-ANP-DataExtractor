@@ -1,18 +1,8 @@
-from abc import ABC, abstractmethod
-from slide.database.models.download import DownloadDTO
+from slide.downloaders.downloadPolicy import DownloadPolicy
+from slide.downloaders.aria2p import Aria2P
+from slide.downloaders.aria2pHandlers import on_download_error, on_download_complete
 
 
-class DownloadPolicy(ABC):
 
-    @abstractmethod
-    def download(self, dtos: list[DownloadDTO]) -> list[str]:
-        """
-        Download files based on the provided DTOs.
 
-        Args:
-            dtos (list[DownloadDTO]): The list of download DTOs to process.
-
-        Returns:
-            bool: True if the download was successful, False otherwise.
-        """
-        pass
+__all__ = ["DownloadPolicy", "Aria2P", "on_download_complete", "on_download_error"]

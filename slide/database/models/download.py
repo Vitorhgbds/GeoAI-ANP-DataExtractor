@@ -1,12 +1,8 @@
-from dataclasses import dataclass
 from enum import Enum
-import json
 from pathlib import Path
-import sqlite3
 from typing import Optional
-from abc import ABC
 
-from slide.database import BaseDAO, BaseDTO, CustomField
+from slide.database.models.base import BaseDAO, BaseDTO, CustomField
 
 class DownloadStatus(Enum):
     DONE = "done"
@@ -148,6 +144,9 @@ class LogDownloadDAO(DownloadDAO):
         return super().fetch_where(condition)
     
     def fetch_from(self, query: str) -> list[LogDownloadDTO]:
+        self.conn.enable_load_extension(True)
+        current_file_path = Path(__file__).resolve()
+        self.conn.load_extension(str(current_file_path.parent / "regex0.dll"))
         cursor = self.conn.cursor()
         cursor.execute(query)
         rows = cursor.fetchall()

@@ -2,36 +2,34 @@ import json
 from pathlib import Path
 import re
 from time import sleep
-from typing import Tuple
 from bs4 import BeautifulSoup
 import requests
 from slide.commons import BASE_URL, WELL_URL
-from slide.database.models.download import CatalogDownloadDTO, DownloadDTO, DownloadStatus, DownloadStatus
+from slide.database.models.download import CatalogDownloadDTO, DownloadStatus
 from slide.logger import Logger
 from slide.providers.cache import CacheProvider
-from slide.scrappers import Scrapper
+from . import Scrapper
+from slide.webscrapper.authPolicy import ANPAuthPolicy
 
 logging = Logger()
 logger = logging.get_logger()
 class CatalogScrapper(Scrapper):
 
-    def __init__(self, auth: Tuple[str, str], out_dir: Path, use_cache: bool = False, delay: int = 0) -> None:
+    def __init__(self, out_dir: Path, use_cache: bool = False, delay: int = 0) -> None:
         super().__init__()
+        self.authPolicy = ANPAuthPolicy()
         self.headers = {
             'host': 'reate.cprm.gov.br',
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
             "X-Requested-With": "XMLHttpRequest",
-            "Content-Type": "application/xml; charset=UTF-8",
-            "Authorization": auth[1]
+            "Content-Type": "application/xml; charset=UTF-8"
             }
-        self.auth = auth 
         self.out_dir = out_dir
-        self.cache = CacheProvider(out_dir / "catalog-cache.json")
+        self.cache = CacheProvider(Path(out_dir) / "catalog-cache.json")
         self.use_cache = use_cache
         self.start_url = BASE_URL + WELL_URL
-        self.urls = [self.start_url]
         self.delay = delay
-        self.results = []
+        self.results: list[str] = []
 
 
     def isCatalogFile(self, name: str) -> bool:
@@ -105,28 +103,38 @@ class CatalogScrapper(Scrapper):
         else:
             self.cache.clean()
 
-        max_retries = 10
-        retries = 0
+        catalogs: list[CatalogDownloadDTO] = []
+        self.auths = self.authPolicy.get()
+        for basin, token in self.auths:
+            self.headers["Authorization"] = token
+            self.urls = [self.start_url]
+            self.results = []
 
-        while retries < max_retries:
-            try:
-                logger.debug("Starting deep search...")
-                self.deep_search()
-                logger.debug(f"Deep search completed. Found {len(self.results)} results.")
-                break
-            except Exception as e:
-                logger.error(f"Error occurred: {e}")
-                retries = retries + 1
-                logger.debug(f"Retrying {retries}/{max_retries}...")
-                continue
-            finally:
-                self.cache.save({"urls": self.urls, "results": self.results})
+            max_retries = 10
+            retries = 0
+            while retries < max_retries:
+                try:
+                    logger.debug("Starting deep search...")
+                    self.deep_search()
+                    logger.debug(f"Deep search completed. Found {len(self.results)} results.")
+                    break
+                except Exception as e:
+                    logger.error(f"Error occurred: {e}")
+                    retries = retries + 1
+                    logger.debug(f"Retrying {retries}/{max_retries}...")
+                    continue
+                finally:
+                    self.cache.save({"urls": self.urls, "results": self.results})
+            catalogs.extend(
+                [CatalogDownloadDTO(
+                    url=url,
+                    basin=basin,
+                    name=url.split("/")[-1],
+                    path=str(f"{self.out_dir}/{basin}"),
+                    status=DownloadStatus.WAITING.value,
+                    headers=json.dumps(self.headers)
+                    ) for url in self.results]
+            )
 
-        return [CatalogDownloadDTO(
-                url=url,
-                basin=self.auth[0],
-                name=url.split("/")[-1],
-                path=str(self.out_dir),
-                status=DownloadStatus.WAITING.value,
-                headers=json.dumps(self.headers)
-                ) for url in self.results]
+        return catalogs
+    

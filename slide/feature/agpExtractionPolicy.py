@@ -4,12 +4,12 @@ from pathlib import Path
 import re
 from typing import Tuple
 from slide.database.models.agp import AgpLithologyDTO, AgpSummaryDTO
-from slide.scrappers import Scrapper
+from slide.database.models.download import DownloadDTO
+from slide.feature import FeatureExtractionPolicy
 
 
-class AgpTableScrapper(Scrapper, ABC):
-    def __init__(self, agp: Path):
-        self.agp = agp
+class AgpTableExtractor(FeatureExtractionPolicy, ABC):
+    def __init__(self):
         self.well = None
         self.basin = None
 
@@ -44,14 +44,18 @@ class AgpTableScrapper(Scrapper, ABC):
 
         if not self.well:
             reg = r"POO\s*:\s*(?P<POCO>.+?)\s*\n.*?BACIA\s*:\s*(?P<BACIA>.+?)\s*\("
-        match = re.search(
-            reg,
-            content[0:2000],
-            re.DOTALL
-        )
-        self.well = match.group("POCO").strip() if match else None
+            match = re.search(
+                reg,
+                content[0:2000],
+                re.DOTALL
+            )
+            self.well = match.group("POCO").strip() if match else None
 
-    def scrap(self) -> list:
+    def extract(self, data: DownloadDTO) -> list:
+        self.agp = f"{data.path}/{data.name}"
+        self.well = None
+        self.basin = None
+        
         with open(self.agp, "r", encoding="utf-8", errors="ignore") as f:
             content = f.read()
         # Find the LITOLOGIA table section
@@ -64,9 +68,7 @@ class AgpTableScrapper(Scrapper, ABC):
         data = [self.build(row) for row in rows]
         return data
     
-class Summary(AgpTableScrapper):
-    def __init__(self, agp: Path):
-        super().__init__(agp)
+class Summary(AgpTableExtractor):
 
     @property
     def table(self) -> re.Pattern:
@@ -88,9 +90,7 @@ class Summary(AgpTableScrapper):
             percentage=float(percentual),
         )
     
-class Lithology(AgpTableScrapper):
-    def __init__(self, agp: Path):
-        super().__init__(agp)
+class Lithology(AgpTableExtractor):
 
     @property
     def table(self) -> re.Pattern:
