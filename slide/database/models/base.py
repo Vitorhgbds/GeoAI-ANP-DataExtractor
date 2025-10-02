@@ -111,7 +111,7 @@ class BaseDAO(ABC):
 
 
     def __init__(self, db_path: str | Path = "base.db"):
-        self.conn = sqlite3.connect(db_path)
+        self.conn = sqlite3.connect(db_path,timeout=120)
 
 
     @property

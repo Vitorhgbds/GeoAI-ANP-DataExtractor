@@ -1,19 +1,25 @@
 from pathlib import Path
 
 from slide.database.dataCollectionPolicy import DataCollectionPolicy, DataCollectionPolicy
+from slide.database.models.agp import AgpLithologyDTO, AgpSummaryDAO, AgpSummaryDTO, AgpLithologyDAO
 from slide.database.models.download import AGPDownloadDAO, AGPDownloadDTO, LogDownloadDAO, LogDownloadDTO
+from slide.database.models.log import LogChannelsDAO, LogChannelsDTO, LogDAO, LogDTO
 from slide.downloaders.aria2p import Aria2P
 
+from slide.logger import Logger
+
+logging = Logger()
+logger = logging.get_logger()
 
 class LogCollectionPolicy(DataCollectionPolicy):
     def __init__(self, db_path: Path | str, *args, **kwargs):
         super().__init__(db_path, *args, **kwargs)
-        self.downloader = Aria2P(overwrite=False, cache_dao=LogDownloadDAO(self.db_path))
-        self.dao = LogDownloadDAO(f"{self.db_path}")
 
     def collect(self) -> list[LogDownloadDTO]:
-        
-        dtos = self.dao.fetch_from("""
+        dao = LogDownloadDAO(f"{self.db_path}")
+        downloader = Aria2P(overwrite=False, cache_dao=dao)
+        logger.debug("Collecting dlis, lis and las log download files based on AGP well data.")        
+        dtos = dao.fetch_from("""
                 WITH AGPWells AS (
                     SELECT DISTINCT 
                         replace(
@@ -52,15 +58,31 @@ class LogCollectionPolicy(DataCollectionPolicy):
                     or LOWER(name) LIKE "%.lis" 
                     or LOWER(name) LIKE "%.las";
         """)
-        self.downloader.download(dtos)
+        logger.debug(f"Found {len(dtos)} log files to be downloaded.")
+        download_dtos = dtos.copy()
+        downloader.download(download_dtos)
+        logger.debug(f"Returning {len(dtos)} collected log files.")
         return dtos
+        
 
-
+    def save(self, records: list[LogDTO] | list[LogChannelsDTO]) -> None:
+        dao_class = LogDAO if isinstance(records[0], LogDTO) else LogChannelsDAO
+        dao = dao_class(Path(__file__).parent / "features.db")
+        dao.bulk_insert(records)
+        logger.debug(f"Saved {len(records)} records to the database features.db.")
 
 class AgpCollectionPolicy(DataCollectionPolicy):
     def __init__(self, db_path: Path | str, *args, **kwargs):
         super().__init__(db_path, *args, **kwargs)
-        self.dao = AGPDownloadDAO(f"{self.db_path}")
 
     def collect(self) -> list[AGPDownloadDTO]:
-        return self.dao.fetch_all()
+        dao = AGPDownloadDAO(f"{self.db_path}")
+        return dao.fetch_all()
+
+    def save(self, records: list[AgpSummaryDTO] | list[AgpLithologyDTO]) -> None:
+        dao_class = AgpLithologyDAO if isinstance(records[0], AgpLithologyDTO) else AgpSummaryDAO
+        dao = dao_class(f"{self.db_path}")
+        dao.bulk_insert(records)
+
+        dao = dao_class(Path(__file__).parent / "features.db")
+        dao.bulk_insert(records)

@@ -6,7 +6,7 @@ from slide.database.models.agp import AgpLithologyDAO, AgpSummaryDAO
 from slide.database.models.log import LogDAO
 from slide.feature.agpExtractionPolicy import Lithology, Summary
 from slide.feature.featureExtractionEngine import FeatureEngine
-from slide.feature.logExtractionPolicy import LogExtractionPolicy
+from slide.feature.logExtractionPolicy import LogChannelsExtractionPolicy, LogExtractionPolicy
 from slide.logger import Logger
 from slide.downloaders import Aria2P
 from slide.webscrapper import CatalogScrapper, AgpScrapper, WebScrapperEngine
@@ -46,24 +46,27 @@ def scrap_conventional_logs(data_path: str, download: bool, *args, **kwargs):
     WebScrapperEngine(scrappers=scrapper, dao=dao, downloader=downloader).collect()
 
 def build_agp_lithology(data_path: str, *args, **kwargs):
-    dao = AgpLithologyDAO(f"{data_path}/download.db")
     collection_policy = AgpCollectionPolicy(f"{data_path}/download.db")
     extraction_policy = Lithology()
-    engine = FeatureEngine(policy=extraction_policy, data_collection_policy=collection_policy, dao=dao)
+    engine = FeatureEngine(policy=extraction_policy, data_collection_policy=collection_policy)
     engine.collect()
 
 def build_agp_summary(data_path: str, *args, **kwargs):
-    dao = AgpSummaryDAO(f"{data_path}/download.db")
     collection_policy = AgpCollectionPolicy(f"{data_path}/download.db")
     extraction_policy = Summary()
-    engine = FeatureEngine(policy=extraction_policy, data_collection_policy=collection_policy, dao=dao)
+    engine = FeatureEngine(policy=extraction_policy, data_collection_policy=collection_policy)
     engine.collect()
 
 def build_conventional_logs(data_path: str, *args, **kwargs):
-    dao = LogDAO(f"{data_path}/download.db")
     collection_policy = LogCollectionPolicy(f"{data_path}/download.db")
     extraction_policy = LogExtractionPolicy()
-    engine = FeatureEngine(policy=extraction_policy, data_collection_policy=collection_policy, dao=dao)
+    engine = FeatureEngine(policy=extraction_policy, data_collection_policy=collection_policy)
+    engine.collect()
+
+def build_logs_channels(data_path: str, *args, **kwargs):
+    collection_policy = LogCollectionPolicy(f"{data_path}/download.db")
+    extraction_policy = LogChannelsExtractionPolicy()
+    engine = FeatureEngine(policy=extraction_policy, data_collection_policy=collection_policy)
     engine.collect()
 
 
@@ -134,6 +137,11 @@ def make_feature_subparsers() -> dict:
         "help": "Build the conventional logs feature dataset from downloaded conventional log files",
         "description": "Create a feature extraction engine to build the conventional logs dataset from downloaded conventional log files.",
         "func": build_conventional_logs,
+    }
+    feature_subparsers["logs-channels"] = {
+        "help": "Build the logs channels feature dataset from downloaded conventional log files",
+        "description": "Create a feature extraction engine to build the logs channels dataset from downloaded conventional log files.",
+        "func": build_logs_channels,
     }
     return feature_subparsers
 

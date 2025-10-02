@@ -10,3 +10,7 @@ class DataCollectionPolicy(ABC):
     @abstractmethod
     def collect(self) -> list[BaseDTO]:
         pass
+
+    @abstractmethod
+    def save(self, records: list) -> None:
+        pass
