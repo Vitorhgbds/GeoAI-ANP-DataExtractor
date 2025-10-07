@@ -1,4 +1,5 @@
 from enum import Enum
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -15,6 +16,24 @@ class DownloadDTO(BaseDTO):
     status: str  # "done", "waiting", "failed"
     errors: str | None = None
     headers: str | None = None  # You can store this as JSON string if needed
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 class DownloadDAO(BaseDAO):
@@ -146,7 +165,7 @@ class LogDownloadDAO(DownloadDAO):
     def fetch_from(self, query: str) -> list[LogDownloadDTO]:
         self.conn.enable_load_extension(True)
         current_file_path = Path(__file__).resolve()
-        self.conn.load_extension(str(current_file_path.parent / "regex0.dll"))
+        self.conn.load_extension(str(current_file_path.parent / f"regex0.{'dll' if os.name == 'nt' else 'so'}"))
         cursor = self.conn.cursor()
         cursor.execute(query)
         rows = cursor.fetchall()
