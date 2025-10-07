@@ -12,7 +12,7 @@ from slide.logger import Logger
 from slide.providers.progress import ProgressProvider, ProgressType, TaskID
 import traceback
 from tqdm import tqdm
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 
 logging = Logger()
 logger = logging.get_logger()
@@ -55,7 +55,7 @@ class Aria2P(DownloadPolicy):
         self.finished_downloads = 0
         self.cache.close()
 
-        executor = ProcessPoolExecutor(2)
+        executor = ThreadPoolExecutor(2)
         loop = asyncio.new_event_loop()
 
         monitor = loop.run_in_executor(executor, self.monitor_downloads)
@@ -63,16 +63,21 @@ class Aria2P(DownloadPolicy):
         download = loop.run_in_executor(executor, self._download_async, dtos)
 
         try:
-            loop.run_until_complete(asyncio.gather(monitor, download))
+            loop.run_until_complete(asyncio.gather(monitor, download, return_exceptions=True))
         except Exception as e:
             logger.error(f"Error occurred during download: {e}")
-        finally:
+            monitor.cancel()
+            download.cancel()
+        finally:           
+            tqdm.close()
             loop.close()
 
     def _download_async(self, dtos: list[DownloadDTO]) -> None:
         
         if not self.aria2:
             self.aria2 = self.start_aria2c()
+
+        logger.info(f"[🚀] Starting downloads with aria2c (RPC port: {self.rpc_port})...")
 
         while len(dtos) > 0:
             dto = dtos.pop()
@@ -90,15 +95,15 @@ class Aria2P(DownloadPolicy):
                     break  # Exit the loop if the download was added successfully
                 except Exception as e:
                     logger.error(f"Error while adding download: {e}")
-                    time.sleep(1)
+                    time.sleep(2)
         
+        logger.info(f"Finished adding downloads: {self.total_downloads} total.")
     
     def monitor_downloads(self):
 
         if not self.aria2:
             self.aria2 = self.start_aria2c()
 
-        logger.info(f"[🚀] Starting downloads with aria2c (RPC port: {self.rpc_port})...")
         logger.info(f"[ℹ️] Total files to download: {self.total_downloads}")
         logger.info(f"[ℹ️] Using another terminal run `aria2p top` to monitor each download in real-time.")
 
