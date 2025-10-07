@@ -69,7 +69,6 @@ class Aria2P(DownloadPolicy):
             monitor.cancel()
             download.cancel()
         finally:           
-            tqdm.close()
             loop.close()
 
     def _download_async(self, dtos: list[DownloadDTO]) -> None:
