@@ -111,7 +111,8 @@ class BaseDAO(ABC):
 
 
     def __init__(self, db_path: str | Path = "base.db"):
-        self.conn = sqlite3.connect(db_path,timeout=120)
+        self.db_path = db_path
+        self.conn = sqlite3.connect(db_path,timeout=600)
 
 
     @property
@@ -202,9 +203,14 @@ class BaseDAO(ABC):
         cursor.execute(f"DELETE FROM {self.dto_class.table_name()}")
         self.conn.commit()
 
+    def ensure_connection(self):
+        if self.conn is None:
+            self.conn = sqlite3.connect(self.db_path, timeout=600)
 
     def close(self):
-        self.conn.close()
+        if self.conn:
+            self.conn.close()
+            self.conn = None
 
 
 
