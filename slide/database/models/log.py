@@ -6,13 +6,22 @@ from slide.database.models.base import BaseDAO, BaseDTO
 class LogDTO(BaseDTO):
     well: str
     depth: float
-    channel: str
-    value: float
+    CALI: float | None = None
+    SP: float | None = None
+    GR: float | None = None
+    DT: float | None = None
+    ILD: float | None = None
+    RHOB: float | None = None
+    NPHI: float | None = None
+    DRHO: float | None = None
+    MSFL: float | None = None
+    SFLU: float | None = None
 
     @classmethod
     def table_name(cls) -> str:
         return "LogsFeatures"
-    
+
+
 class LogChannelsDTO(BaseDTO):
     well: str
     channel: str
@@ -21,7 +30,8 @@ class LogChannelsDTO(BaseDTO):
     @classmethod
     def table_name(cls) -> str:
         return "LogsChannels"
-    
+
+
 class LogChannelsDAO(BaseDAO):
     def __init__(self, db_path: str | Path = "features.db"):
         super().__init__(db_path)
@@ -67,7 +77,7 @@ class LogDAO(BaseDAO):
 
     @property
     def conflict_keys(self) -> str:
-        return "depth, well, channel"
+        return "depth, well"
     
     @property
     def dto_class(self) -> type[LogDTO]:
@@ -79,9 +89,17 @@ class LogDAO(BaseDAO):
             CREATE TABLE IF NOT EXISTS {self.dto_class.table_name()} (
             well TEXT,
             depth FLOAT,
-            channel TEXT,
-            value FLOAT,
-            PRIMARY KEY (well, depth, channel)
+            CALI FLOAT,
+            SP FLOAT,
+            GR FLOAT,
+            DT FLOAT,
+            ILD FLOAT,
+            RHOB FLOAT,
+            NPHI FLOAT,
+            DRHO FLOAT,
+            MSFL FLOAT,
+            SFLU FLOAT,
+            PRIMARY KEY (well, depth)
             )
         """)
         self.conn.commit()

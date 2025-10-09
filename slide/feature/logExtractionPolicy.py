@@ -20,51 +20,63 @@ class LogExtractionPolicy(FeatureExtractionPolicy):
     def extract(self, log: LogDownloadDTO) -> list[dict]:
 
         file_name = f"{log.path}/{log.name}"
-        try:
-            dlis_file = dlis.load(f"{file_name}")
-        except Exception as e:
-            logger.error(f"Error loading DLIS file {file_name}: {e}")
-            return []
+        valid_channels = ['CALI', 'SP', 'GR', 'DT', 'ILD', 'RHOB', 'NPHI', 'DRHO', 'MSFL', 'SFLU']
 
-        records: dict[float, dict[str, float]] = {}
+        try: 
+            with dlis.load(f"{file_name}") as dlis_file:
 
-        for logical_file in dlis_file:
-            
-            file: LogicalFile = logical_file
-            index_channel: Channel = next(c for c in file.channels if "INDEX" in c.name.upper())
-            channels: list[Channel] = [
-                c for c in file.channels 
-                if not any(keyword in c.name.upper() for keyword in ["INDEX", "DUMM", "_"])
-            ]
+                records: dict[float, dict[str, float]] = {}
 
-            index_curves = index_channel.curves()
-            
-            channels_curves: dict[str, list[float]] = {channel.name: channel.curves() for channel in channels}
-
-            for i in tqdm(range(0, len(index_curves) - 1), desc=f"Processing file {file}", leave=False, miniters=1):
-                depth = index_curves[i]
-
-                for channel_name, curves in channels_curves.items():
-                    depth_record = records.get(depth, {})
-
-                    if i >= len(curves):
-                        #logger.warning(f"Channel {channel_name} has no value at index {i} (depth {depth}) in file {file}. Skipping.")
-                        continue
-
-                    depth_record[channel_name.upper()] = curves[i]
+                for logical_file in dlis_file:
                     
-                    records[depth] = depth_record
+                    file: LogicalFile = logical_file
+                    index_channel: Channel = next(c for c in file.channels if "INDEX" in c.name.upper())
+                    channels: list[Channel] = [
+                        c for c in file.channels 
+                        if c.name.upper() in valid_channels
+                    ]
+                    
+                    index_curves = index_channel.curves()
+                    
+                    channels_curves: dict[str, list[float]] = {channel.name: channel.curves() for channel in channels}
+
+                    for i in tqdm(range(0, len(index_curves) - 1), desc=f"Processing file {file}", leave=False, miniters=1):
+                        depth = index_curves[i]
+
+                        for channel_name, curves in channels_curves.items():
+                            depth_record = records.get(depth, {})
+
+                            if i >= len(curves):
+                                #logger.warning(f"Channel {channel_name} has no value at index {i} (depth {depth}) in file {file}. Skipping.")
+                                continue
+
+                            depth_record[channel_name.upper()] = curves[i]
+                            
+                            records[depth] = depth_record
         
+        
+        
+        except Exception as e:
+            logger.error(f"Error processing DLIS file {file_name}: {e}")
+            return []
+          
         data_points = self.__post_processing(records)
         data_points = [
             LogDTO(
                 well=log.well,
                 depth=depth,
-                channel=channel_name,
-                value=value
+                CALI=depth_record.get("CALI", None),
+                SP=depth_record.get("SP", None),
+                GR=depth_record.get("GR", None),
+                DT=depth_record.get("DT", None),
+                ILD=depth_record.get("ILD", None),
+                RHOB=depth_record.get("RHOB", None),
+                NPHI=depth_record.get("NPHI", None),
+                DRHO=depth_record.get("DRHO", None),
+                MSFL=depth_record.get("MSFL", None),
+                SFLU=depth_record.get("SFLU", None)
             )
             for depth, depth_record in records.items()
-            for channel_name, value in depth_record.items()
         ]
 
         logger.debug(f"Extracted {len(data_points)} log data points from file {file_name}.")

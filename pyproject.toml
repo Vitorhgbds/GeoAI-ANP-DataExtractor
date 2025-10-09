@@ -19,6 +19,9 @@ aria2p = {extras = ["tui"], version = "^0.12.1"}
 ipykernel = "^6.30.1"
 pandas = "^2.3.2"
 pydantic = "^2.11.7"
+seaborn = "^0.13.2"
+plotly = "^6.3.1"
+nbformat = "^5.10.4"
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = ">=4.1.0,<5.0.0"
