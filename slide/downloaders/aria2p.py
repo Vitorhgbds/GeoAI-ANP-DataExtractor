@@ -66,6 +66,7 @@ class Aria2P(DownloadPolicy):
             loop.run_until_complete(asyncio.gather(monitor, download, return_exceptions=True))
         except Exception as e:
             logger.error(f"Error occurred during download: {e}")
+            self.stop()
             monitor.cancel()
             download.cancel()
         finally:           
