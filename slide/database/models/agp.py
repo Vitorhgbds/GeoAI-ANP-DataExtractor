@@ -1,10 +1,5 @@
-from abc import abstractmethod
-from dataclasses import dataclass
-from enum import Enum
-import json
 from pathlib import Path
 import sqlite3
-from typing import Optional
 
 from slide.database.models.base import BaseDAO, BaseDTO
 
@@ -37,7 +32,7 @@ class AgpLithologyDTO(BaseDTO):
     @classmethod
     def table_name(cls) -> str:
         return "AGPLithology"
-    
+
 
 class AgpLithologyDAO(BaseDAO):
     def __init__(self, db_path: str | Path = "agp.db"):
@@ -47,14 +42,15 @@ class AgpLithologyDAO(BaseDAO):
     @property
     def dto_class(self) -> type[AgpLithologyDTO]:
         return AgpLithologyDTO
-    
+
     @property
     def conflict_keys(self) -> str:
         return "well, bottom"
 
     def create_table(self):
         cursor = self.conn.cursor()
-        cursor.execute(f"""
+        cursor.execute(
+            f"""
             CREATE TABLE IF NOT EXISTS {self.dto_class.table_name()} (
             basin TEXT,
             id TEXT,
@@ -68,9 +64,9 @@ class AgpLithologyDAO(BaseDAO):
             roundness TEXT,
             PRIMARY KEY (well, bottom)
             )
-        """)
+        """
+        )
         self.conn.commit()
-
 
     def upsert(self, dto: AgpLithologyDTO):
         super().upsert(dto)
@@ -83,7 +79,6 @@ class AgpLithologyDAO(BaseDAO):
 
     def fetch_where(self, condition: str) -> list[AgpLithologyDTO]:
         return super().fetch_where(condition)
-    
 
 
 class AgpSummaryDAO(BaseDAO):
@@ -94,14 +89,15 @@ class AgpSummaryDAO(BaseDAO):
     @property
     def dto_class(self) -> type[AgpSummaryDTO]:
         return AgpSummaryDTO
-    
+
     @property
     def conflict_keys(self) -> str:
         return "well, code"
 
     def create_table(self):
         cursor = self.conn.cursor()
-        cursor.execute(f"""
+        cursor.execute(
+            f"""
             CREATE TABLE IF NOT EXISTS {self.dto_class.table_name()} (
             well TEXT,
             basin TEXT,
@@ -111,10 +107,10 @@ class AgpSummaryDAO(BaseDAO):
             percentage FLOAT,
             PRIMARY KEY (well, code)
             )
-        """)
+        """
+        )
         self.conn.commit()
 
-    
     def upsert(self, dto: AgpSummaryDTO):
         super().upsert(dto)
 

@@ -13,17 +13,18 @@ from slide.webscrapper.authPolicy import ANPAuthPolicy
 
 logging = Logger()
 logger = logging.get_logger()
-class CatalogScrapper(Scrapper):
 
+
+class CatalogScrapper(Scrapper):
     def __init__(self, out_dir: Path, use_cache: bool = False, delay: int = 0) -> None:
         super().__init__()
         self.authPolicy = ANPAuthPolicy()
         self.headers = {
-            'host': 'reate.cprm.gov.br',
+            "host": "reate.cprm.gov.br",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
             "X-Requested-With": "XMLHttpRequest",
-            "Content-Type": "application/xml; charset=UTF-8"
-            }
+            "Content-Type": "application/xml; charset=UTF-8",
+        }
         self.out_dir = out_dir
         self.cache = CacheProvider(Path(out_dir) / "catalog-cache.json")
         self.use_cache = use_cache
@@ -31,10 +32,8 @@ class CatalogScrapper(Scrapper):
         self.delay = delay
         self.results: list[str] = []
 
-
     def isCatalogFile(self, name: str) -> bool:
         return bool(re.search(r"(?i)^md5.*\.txt$", name.strip()))
-    
 
     def fetch(self, url: str) -> tuple[list[str], list]:
         """find and extract links from the provided url.
@@ -74,7 +73,6 @@ class CatalogScrapper(Scrapper):
         next = [link for link in links[1:] if link.endswith("/")] if len(links) > 1 and not leaf else []
         return next, leaf
 
-
     def deep_search(self) -> list[str]:
         """Perform a deep search on the provided URL.
 
@@ -91,7 +89,6 @@ class CatalogScrapper(Scrapper):
             self.urls.extend(next)
             self.results.extend(result)
         return self.results
-    
 
     def scrap(self) -> list[CatalogDownloadDTO]:
         # Implement the scraping logic here
@@ -126,15 +123,17 @@ class CatalogScrapper(Scrapper):
                 finally:
                     self.cache.save({"urls": self.urls, "results": self.results})
             catalogs.extend(
-                [CatalogDownloadDTO(
-                    url=url,
-                    basin=basin,
-                    name=url.split("/")[-1],
-                    path=str(f"{self.out_dir}/{basin}"),
-                    status=DownloadStatus.WAITING.value,
-                    headers=json.dumps(self.headers)
-                    ) for url in self.results]
+                [
+                    CatalogDownloadDTO(
+                        url=url,
+                        basin=basin,
+                        name=url.split("/")[-1],
+                        path=str(f"{self.out_dir}/{basin}"),
+                        status=DownloadStatus.WAITING.value,
+                        headers=json.dumps(self.headers),
+                    )
+                    for url in self.results
+                ]
             )
 
         return catalogs
-    

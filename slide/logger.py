@@ -3,6 +3,7 @@ from threading import Lock
 from rich.console import Console
 from rich.logging import RichHandler
 
+
 class Logger:
     _instance = None
     _lock = Lock()  # Thread-safe initialization

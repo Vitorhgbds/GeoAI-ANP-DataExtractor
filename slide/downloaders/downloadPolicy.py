@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
 from slide.database.models.download import DownloadDTO
 
-class DownloadPolicy(ABC):
 
+class DownloadPolicy(ABC):
     @abstractmethod
     def download(self, dtos: list[DownloadDTO]) -> list[str]:
         """

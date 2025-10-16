@@ -7,14 +7,14 @@ import requests
 
 
 class AuthPolicy(ABC):
-    
     @abstractmethod
     def get(self) -> list:
         pass
 
+
 class ANPAuthPolicy(AuthPolicy):
     """
-        This class aims to scrap the auth token for each basin available at: "https://reate.cprm.gov.br/anp/TERRESTRE"
+    This class aims to scrap the auth token for each basin available at: "https://reate.cprm.gov.br/anp/TERRESTRE"
     """
 
     def __init__(self) -> None:
@@ -31,28 +31,27 @@ class ANPAuthPolicy(AuthPolicy):
             list[Tuple[str, str]]: A list of tuples containing basin names and their corresponding links.
         """
         response = requests.get(url)
-        
+
         if response.status_code != 200:
             raise requests.exceptions.RequestException(
                 f"Failed to fetch basin links from {url} with status code {response.status_code}"
-                )
-    
+            )
+
         basin_links = []
-        soup = BeautifulSoup(response.content, 'html.parser')
+        soup = BeautifulSoup(response.content, "html.parser")
         # Find all <h4> tags that start with 'Bacia'
-        titles = soup.find_all('h4')
+        titles = soup.find_all("h4")
         for title in titles:
-            
             basin_name: str = title.get_text(strip=True).lower()
-            if not basin_name.startswith('bacia'):
+            if not basin_name.startswith("bacia"):
                 continue
-            
+
             # Find the nearest <a> tag with an href attribute
-            link_tag = title.find_next('a', href=True)
+            link_tag = title.find_next("a", href=True)
             if not link_tag or not isinstance(link_tag, Tag):
                 continue
-            
-            link = link_tag.get('href')
+
+            link = link_tag.get("href")
             # Store the basin name and link in the dictionary
             basin_links.append((basin_name, link))
 
@@ -74,7 +73,7 @@ class ANPAuthPolicy(AuthPolicy):
             user = link.split("/")[-1]
             passcode = "null"
             basic_auth = f"{user}:{passcode}"
-            encoded_bytes = base64.b64encode(basic_auth.encode('utf-8'))
+            encoded_bytes = base64.b64encode(basic_auth.encode("utf-8"))
             auths.append((name, f"Basic {encoded_bytes.decode('utf-8')}"))
 
         return auths

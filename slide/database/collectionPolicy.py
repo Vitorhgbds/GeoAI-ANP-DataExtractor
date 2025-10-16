@@ -11,6 +11,7 @@ from slide.logger import Logger
 logging = Logger()
 logger = logging.get_logger()
 
+
 class LogCollectionPolicy(DataCollectionPolicy):
     def __init__(self, db_path: Path | str, *args, **kwargs):
         super().__init__(db_path, *args, **kwargs)
@@ -18,10 +19,11 @@ class LogCollectionPolicy(DataCollectionPolicy):
     def collect(self) -> list[LogDownloadDTO]:
         dao = LogDownloadDAO(f"{self.db_path}")
         downloader = Aria2P(overwrite=False, cache_dao=dao)
-        logger.debug("Collecting dlis, lis and las log download files based on AGP well data.")        
-        dtos = dao.fetch_from("""
+        logger.debug("Collecting dlis, lis and las log download files based on AGP well data.")
+        dtos = dao.fetch_from(
+            """
                 WITH AGPWells AS (
-                    SELECT DISTINCT 
+                    SELECT DISTINCT
                         replace(
                             regex_replace(
                                 '([A-Za-z]*|^0[0-9])0+([A-Za-z0-9])',
@@ -31,7 +33,7 @@ class LogCollectionPolicy(DataCollectionPolicy):
                     WHERE a.well IS NOT NULL
                 ),
                 LogsWells AS (
-                    SELECT 
+                    SELECT
                         replace(well,"-","") AS well,
                         url,
                         path,
@@ -42,7 +44,7 @@ class LogCollectionPolicy(DataCollectionPolicy):
                         status
                     FROM logs
                 )
-                SELECT 
+                SELECT
                     url,
                     path,
                     name,
@@ -51,25 +53,26 @@ class LogCollectionPolicy(DataCollectionPolicy):
                     basin,
                     status,
                     well
-                FROM LogsWells 
-                    INNER JOIN AGPWells 
+                FROM LogsWells
+                    INNER JOIN AGPWells
                     USING(well)
-                WHERE LOWER(name) LIKE "%.dlis" 
-                    or LOWER(name) LIKE "%.lis" 
+                WHERE LOWER(name) LIKE "%.dlis"
+                    or LOWER(name) LIKE "%.lis"
                     or LOWER(name) LIKE "%.las";
-        """)
+        """
+        )
         logger.debug(f"Found {len(dtos)} log files to be downloaded.")
         download_dtos = dtos.copy()
         downloader.download(download_dtos)
         logger.debug(f"Returning {len(dtos)} collected log files.")
         return dtos
-        
 
     def save(self, records: list[LogDTO] | list[LogChannelsDTO]) -> None:
         dao_class = LogDAO if isinstance(records[0], LogDTO) else LogChannelsDAO
         dao = dao_class(Path(__file__).parent / "features.db")
         dao.bulk_insert(records)
         logger.debug(f"Saved {len(records)} records to the database features.db.")
+
 
 class AgpCollectionPolicy(DataCollectionPolicy):
     def __init__(self, db_path: Path | str, *args, **kwargs):

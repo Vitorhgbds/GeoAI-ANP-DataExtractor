@@ -4,14 +4,13 @@ from slide.webscrapper.catalogScrapper import CatalogScrapper
 from slide.webscrapper.webScrapperEngine import WebScrapperEngine
 
 
-
-
-
-__all__ = ["Scrapper", 
-           "WebScrapper",
-           "WebScrapperEngine",
-           "LogScrapper", 
-           "FileScrapper", 
-           "ConventionalLogScrapper", 
-           "CatalogScrapper", 
-           "AgpScrapper"]
+__all__ = [
+    "Scrapper",
+    "WebScrapper",
+    "WebScrapperEngine",
+    "LogScrapper",
+    "FileScrapper",
+    "ConventionalLogScrapper",
+    "CatalogScrapper",
+    "AgpScrapper",
+]

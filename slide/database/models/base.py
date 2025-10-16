@@ -19,7 +19,7 @@ def CustomField(*, primary_key: bool = False, unique: bool = False, nullable: bo
         FieldInfo: Pydantic Field object with additional constraints
     """
     return Field(json_schema_extra={"primary_key": primary_key, "unique": unique, "nullable": nullable}, **kwargs)
-    
+
 
 class BaseDTO(BaseModel):
     """
@@ -104,28 +104,24 @@ class BaseDTO(BaseModel):
             constraints.append("NOT NULL")
 
         return " ".join(constraints)
-    
+
 
 class BaseDAO(ABC):
     """Base class for all DAO"""
 
-
     def __init__(self, db_path: str | Path = "base.db"):
         self.db_path = db_path
-        self.conn = sqlite3.connect(db_path,timeout=600)
-
+        self.conn = sqlite3.connect(db_path, timeout=600)
 
     @property
     def conflict_keys(self) -> str:
         """Return the ON CONFLICT keys for upsert operations"""
         return ""
 
-
     @property
     def dto_class(self) -> BaseDTO:
         """Return the DTO class associated with this DAO"""
         pass
-
 
     def create_table(self):
         cursor = self.conn.cursor()
@@ -142,13 +138,15 @@ class BaseDAO(ABC):
         cursor = self.conn.cursor()
         keys, values = zip(*dto.to_dict().items())
         placeholders = ", ".join("?" for _ in keys)
-        cursor.execute(f"""
+        cursor.execute(
+            f"""
             INSERT INTO {self.dto_class.table_name()} ({", ".join(keys)})
             VALUES ({placeholders})
             ON CONFLICT({self.conflict_keys}) DO UPDATE SET
                 {", ".join(f"{key}=excluded.{key}" for key in keys if key not in self.conflict_keys)}
         """,
-        values)
+            values,
+        )
         self.conn.commit()
 
     @abstractmethod
@@ -157,19 +155,19 @@ class BaseDAO(ABC):
         keys = dto.to_dict().keys()
         placeholders = ", ".join("?" for _ in keys)
         cursor = self.conn.cursor()
-        cursor.executemany(f"""
+        cursor.executemany(
+            f"""
             INSERT {"OR IGNORE" if ignore_errors else ""} INTO {self.dto_class.table_name()} ({", ".join(keys)})
             VALUES ({placeholders})
             {(f"ON CONFLICT({self.conflict_keys}) DO UPDATE SET "
                 f"{', '.join(
-                    f'{key}=excluded.{key}' 
+                    f'{key}=excluded.{key}'
                     for key in keys if key not in self.conflict_keys
                 )}"
             ) if not ignore_errors else ""}
-            """, [tuple(
-                dto.to_dict().values()
-            ) for dto in dtos
-        ])
+            """,
+            [tuple(dto.to_dict().values()) for dto in dtos],
+        )
         self.conn.commit()
 
     @abstractmethod
@@ -185,19 +183,17 @@ class BaseDAO(ABC):
         rows = cursor.fetchall()
         columns = [desc[0] for desc in cursor.description]
         return [self.dto_class(**dict(zip(columns, row))) for row in rows]
-    
-    
+
     @abstractmethod
     def fetch_where(self, condition: str) -> list[BaseDTO]:
         cursor = self.conn.cursor()
         query = f"SELECT * FROM {self.dto_class.table_name()} WHERE {condition}"
         cursor.execute(query)
         rows = cursor.fetchall()
-        
+
         columns = [desc[0] for desc in cursor.description]
         return [self.dto_class(**dict(zip(columns, row))) for row in rows]
 
-        
     def clean(self):
         cursor = self.conn.cursor()
         cursor.execute(f"DELETE FROM {self.dto_class.table_name()}")
@@ -211,6 +207,3 @@ class BaseDAO(ABC):
         if self.conn:
             self.conn.close()
             self.conn = None
-
-
-

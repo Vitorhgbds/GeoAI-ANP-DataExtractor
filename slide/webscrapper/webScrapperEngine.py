@@ -5,12 +5,16 @@ from slide.logger import Logger
 
 logging = Logger()
 logger = logging.get_logger()
+
+
 class WebScrapperEngine(WebScrapper):
     """
     This engine is responsible for managing the catalog scraping process for all basins available.
     """
 
-    def __init__(self, scrappers: list[Scrapper] | Scrapper, dao: DownloadDAO, downloader: DownloadPolicy | None = None) -> None:
+    def __init__(
+        self, scrappers: list[Scrapper] | Scrapper, dao: DownloadDAO, downloader: DownloadPolicy | None = None
+    ) -> None:
         super().__init__(downloader=downloader, scrappers=scrappers)
         self.dao = dao
 
@@ -23,11 +27,7 @@ class WebScrapperEngine(WebScrapper):
         """
 
         logger.info(f"Starting data collection from all scrappers. {len(self.scrappers)} scrappers found.")
-        dtos: list = [
-            dto
-            for cs in self.scrappers
-            for dto in cs.scrap()
-        ]
+        dtos: list = [dto for cs in self.scrappers for dto in cs.scrap()]
 
         logger.info(f"Collected {len(dtos)} items from all scrappers.")
         logger.info("Inserting collected items into the database.")

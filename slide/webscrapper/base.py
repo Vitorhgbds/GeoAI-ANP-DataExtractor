@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
 from slide.downloaders import DownloadPolicy
 
-class Scrapper(ABC):
 
+class Scrapper(ABC):
     @abstractmethod
     def scrap(self) -> list:
         """

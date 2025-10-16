@@ -5,9 +5,11 @@ from typing import Optional
 
 from slide.database.models.base import BaseDAO, BaseDTO, CustomField
 
+
 class DownloadStatus(Enum):
     DONE = "done"
     WAITING = "waiting"
+
 
 class DownloadDTO(BaseDTO):
     url: str = CustomField(primary_key=True)
@@ -18,24 +20,6 @@ class DownloadDTO(BaseDTO):
     headers: str | None = None  # You can store this as JSON string if needed
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 class DownloadDAO(BaseDAO):
     def __init__(self, db_path: str | Path = "download.db"):
         super().__init__(db_path)
@@ -44,11 +28,11 @@ class DownloadDAO(BaseDAO):
     @property
     def conflict_keys(self) -> str:
         return "url"
-    
+
     @property
     def dto_class(self) -> type[DownloadDTO]:
         return DownloadDTO
-    
+
     def upsert(self, dto: DownloadDTO):
         super().upsert(dto)
 
@@ -57,36 +41,38 @@ class DownloadDAO(BaseDAO):
 
     def fetch_all(self, where: str | None = None) -> list[DownloadDTO]:
         return super().fetch_all(where)
-    
+
     def fetch_where(self, condition: str) -> list[DownloadDTO]:
         return super().fetch_where(condition)
 
     def fetch_by_url(self, url: str) -> Optional[DownloadDTO]:
         cursor = self.conn.cursor()
-        cursor.execute(f"""
+        cursor.execute(
+            f"""
             SELECT *
             FROM {self.dto_class.table_name()}
             WHERE url = ?
-        """, (url,))
+        """,
+            (url,),
+        )
         row = cursor.fetchone()
 
         columns = [desc[0] for desc in cursor.description]
         if row:
             return self.dto_class(**dict(zip(columns, row)))
         return None
-    
 
 
 class CatalogDownloadDTO(DownloadDTO):
     basin: str
-    
+
     @classmethod
     def table_name(cls) -> str:
         return "catalogs"
 
+
 class CatalogDownloadDAO(DownloadDAO):
-    
-    def __init__(self, db_path = "download.db"):
+    def __init__(self, db_path="download.db"):
         super().__init__(db_path)
 
     @property
@@ -104,7 +90,7 @@ class CatalogDownloadDAO(DownloadDAO):
 
     def fetch_where(self, condition: str) -> list[CatalogDownloadDTO]:
         return super().fetch_where(condition)
-    
+
 
 class ANPDownloadDTO(DownloadDTO):
     basin: str
@@ -112,14 +98,12 @@ class ANPDownloadDTO(DownloadDTO):
 
 
 class AGPDownloadDTO(ANPDownloadDTO):
-    
     @classmethod
     def table_name(cls) -> str:
         return "agp"
-    
+
 
 class AGPDownloadDAO(DownloadDAO):
-    
     @property
     def dto_class(self) -> type[AGPDownloadDTO]:
         return AGPDownloadDTO
@@ -135,17 +119,15 @@ class AGPDownloadDAO(DownloadDAO):
 
     def fetch_where(self, condition: str) -> list[AGPDownloadDTO]:
         return super().fetch_where(condition)
-    
+
 
 class LogDownloadDTO(ANPDownloadDTO):
-    
     @classmethod
     def table_name(cls) -> str:
         return "logs"
-    
-    
+
+
 class LogDownloadDAO(DownloadDAO):
-    
     @property
     def dto_class(self) -> type[LogDownloadDTO]:
         return LogDownloadDTO
@@ -161,7 +143,7 @@ class LogDownloadDAO(DownloadDAO):
 
     def fetch_where(self, condition: str) -> list[LogDownloadDTO]:
         return super().fetch_where(condition)
-    
+
     def fetch_from(self, query: str) -> list[LogDownloadDTO]:
         self.conn.enable_load_extension(True)
         current_file_path = Path(__file__).resolve()

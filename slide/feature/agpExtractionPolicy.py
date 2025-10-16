@@ -1,6 +1,4 @@
-
 from abc import ABC, abstractmethod
-from pathlib import Path
 import re
 from typing import Tuple
 from slide.database.models.agp import AgpLithologyDTO, AgpSummaryDTO
@@ -32,30 +30,22 @@ class AgpTableExtractor(FeatureExtractionPolicy, ABC):
             return
         with open(self.agp, "r", encoding="utf-8", errors="ignore") as f:
             content = f.read()
-        
+
         reg = r"POCO\s*:\s*(?P<POCO>.+?)\s*\n.*?BACIA\s*:\s*(?P<BACIA>.+?)\s*\("
-        match = re.search(
-            reg,
-            content[0:2000],
-            re.DOTALL
-        )
+        match = re.search(reg, content[0:2000], re.DOTALL)
         self.well = match.group("POCO").strip().split("\n")[0].strip() if match else None
         self.basin = match.group("BACIA").strip().split("\n")[0].strip() if match else None
 
         if not self.well:
             reg = r"POO\s*:\s*(?P<POCO>.+?)\s*\n.*?BACIA\s*:\s*(?P<BACIA>.+?)\s*\("
-            match = re.search(
-                reg,
-                content[0:2000],
-                re.DOTALL
-            )
+            match = re.search(reg, content[0:2000], re.DOTALL)
             self.well = match.group("POCO").strip() if match else None
 
     def extract(self, data: DownloadDTO) -> list:
         self.agp = f"{data.path}/{data.name}"
         self.well = None
         self.basin = None
-        
+
         with open(self.agp, "r", encoding="utf-8", errors="ignore") as f:
             content = f.read()
         # Find the LITOLOGIA table section
@@ -67,9 +57,9 @@ class AgpTableExtractor(FeatureExtractionPolicy, ABC):
         rows = re.findall(self.rows, table_text)
         data = [self.build(row) for row in rows]
         return data
-    
-class Summary(AgpTableExtractor):
 
+
+class Summary(AgpTableExtractor):
     @property
     def table(self) -> re.Pattern:
         return re.compile(r"RESUMO DAS ROCHAS ENCONTRADAS NO POCO -\s*\n(.*?)(?:\n\s*\n|\Z)", re.DOTALL)
@@ -89,36 +79,41 @@ class Summary(AgpTableExtractor):
             meters=float(metros),
             percentage=float(percentual),
         )
-    
-class Lithology(AgpTableExtractor):
 
+
+class Lithology(AgpTableExtractor):
     @property
     def table(self) -> re.Pattern:
-        return re.compile(r"LITOLOGIA -(?: \*\*\* VALORES VERTICALIZADOS \*\*\*)?\s*\n(?:-+\s*\n)?\s*(.*?)(?=\n\s*\n|$)", re.DOTALL)
+        return re.compile(
+            r"LITOLOGIA -(?: \*\*\* VALORES VERTICALIZADOS \*\*\*)?\s*\n(?:-+\s*\n)?\s*(.*?)(?=\n\s*\n|$)", re.DOTALL
+        )
 
     @property
     def rows(self) -> re.Pattern:
-        return re.compile(r"^\s*(?:(?P<topo>[\d.]+)\s*\([^)]+\))?\s*"
-        r"(?P<base>[\d.]+)\s*\([^)]+\)\s*"
-        r"(?P<cod>\d+)\s+(?P<rocha>[A-Z]+)"
-        r"(?:\s+(?P<cor>[A-Z]+))?"
-        r"(?:\s+(?P<tonalidade>[A-Z]+))?"
-        r"(?:\s+(?P<granulometria>[A-Z]+))?"
-        r"(?:\s+(?P<arredondamento>[A-Z]+))?"
-        r"\s*$", re.MULTILINE)
+        return re.compile(
+            r"^\s*(?:(?P<topo>[\d.]+)\s*\([^)]+\))?\s*"
+            r"(?P<base>[\d.]+)\s*\([^)]+\)\s*"
+            r"(?P<cod>\d+)\s+(?P<rocha>[A-Z]+)"
+            r"(?:\s+(?P<cor>[A-Z]+))?"
+            r"(?:\s+(?P<tonalidade>[A-Z]+))?"
+            r"(?:\s+(?P<granulometria>[A-Z]+))?"
+            r"(?:\s+(?P<arredondamento>[A-Z]+))?"
+            r"\s*$",
+            re.MULTILINE,
+        )
 
     def build(self, row: Tuple) -> AgpLithologyDTO:
         self.ensure_well_and_basin()
         topo, base, cod, rocha, cor, tonalidade, granulometria, arredondamento = row
         return AgpLithologyDTO(
-            basin = self.basin,
-            well = self.well,
-            id = cod,
-            top = topo if topo else None,
-            bottom = base if base else None,
-            rock = rocha,
-            color = cor,
-            hue = tonalidade,
-            granulometry = granulometria,
-            roundness = arredondamento,
+            basin=self.basin,
+            well=self.well,
+            id=cod,
+            top=topo if topo else None,
+            bottom=base if base else None,
+            rock=rocha,
+            color=cor,
+            hue=tonalidade,
+            granulometry=granulometria,
+            roundness=arredondamento,
         )

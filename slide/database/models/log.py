@@ -1,4 +1,3 @@
-
 from pathlib import Path
 from slide.database.models.base import BaseDAO, BaseDTO
 
@@ -40,24 +39,25 @@ class LogChannelsDAO(BaseDAO):
     @property
     def conflict_keys(self) -> str:
         return "well, channel"
-    
+
     @property
     def dto_class(self) -> type[LogChannelsDTO]:
         return LogChannelsDTO
-    
+
     def create_table(self):
         cursor = self.conn.cursor()
-        cursor.execute(f"""
+        cursor.execute(
+            f"""
             CREATE TABLE IF NOT EXISTS {self.dto_class.table_name()} (
             well TEXT,
             channel TEXT,
             total_data FLOAT,
             PRIMARY KEY (well, channel)
             )
-        """)
+        """
+        )
         self.conn.commit()
 
-    
     def upsert(self, dto: LogDTO):
         super().upsert(dto)
 
@@ -66,10 +66,11 @@ class LogChannelsDAO(BaseDAO):
 
     def fetch_all(self, where: str | None = None) -> list[LogDTO]:
         return super().fetch_all(where)
-    
+
     def fetch_where(self, condition: str) -> list[LogDTO]:
         return super().fetch_where(condition)
-    
+
+
 class LogDAO(BaseDAO):
     def __init__(self, db_path: str | Path = "features.db"):
         super().__init__(db_path)
@@ -78,14 +79,15 @@ class LogDAO(BaseDAO):
     @property
     def conflict_keys(self) -> str:
         return "depth, well"
-    
+
     @property
     def dto_class(self) -> type[LogDTO]:
         return LogDTO
-    
+
     def create_table(self):
         cursor = self.conn.cursor()
-        cursor.execute(f"""
+        cursor.execute(
+            f"""
             CREATE TABLE IF NOT EXISTS {self.dto_class.table_name()} (
             well TEXT,
             depth FLOAT,
@@ -101,10 +103,10 @@ class LogDAO(BaseDAO):
             SFLU FLOAT,
             PRIMARY KEY (well, depth)
             )
-        """)
+        """
+        )
         self.conn.commit()
 
-    
     def upsert(self, dto: LogDTO):
         super().upsert(dto)
 
@@ -113,6 +115,6 @@ class LogDAO(BaseDAO):
 
     def fetch_all(self, where: str | None = None) -> list[LogDTO]:
         return super().fetch_all(where)
-    
+
     def fetch_where(self, condition: str) -> list[LogDTO]:
         return super().fetch_where(condition)

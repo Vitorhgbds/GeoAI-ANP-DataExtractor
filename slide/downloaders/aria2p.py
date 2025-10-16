@@ -2,20 +2,18 @@ import asyncio
 import json
 from pathlib import Path
 import subprocess
-import sys
 import time
 import aria2p
 import socket
 from slide.database.models.download import DownloadDAO, DownloadDTO, DownloadStatus
 from slide.downloaders.downloadPolicy import DownloadPolicy
 from slide.logger import Logger
-from slide.providers.progress import ProgressProvider, ProgressType, TaskID
-import traceback
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor
 
 logging = Logger()
 logger = logging.get_logger()
+
 
 class Aria2P(DownloadPolicy):
     def __init__(self, overwrite: bool = False, rpc_port: int = 6800, cache_dao: DownloadDAO | None = None):
@@ -30,25 +28,27 @@ class Aria2P(DownloadPolicy):
 
     def start_aria2c(self) -> aria2p.API:
         # Start aria2c with RPC enabled
-        self.aria2c_process = subprocess.Popen([
-            "aria2c",
-            "--enable-rpc",
-            "--rpc-listen-all=true",
-            "--rpc-allow-origin-all",
-            f"--rpc-listen-port={self.rpc_port}",
-            "--max-connection-per-server=16",
-            "--split=16",
-            "--min-split-size=1M",
-            "--continue=true",
-            "--dir=downloads",  # default download folder
-            "--max-download-result=16000",   # allow tracking 15k+ completed downloads
-            "--quiet=true"
-        ])
+        self.aria2c_process = subprocess.Popen(
+            [
+                "aria2c",
+                "--enable-rpc",
+                "--rpc-listen-all=true",
+                "--rpc-allow-origin-all",
+                f"--rpc-listen-port={self.rpc_port}",
+                "--max-connection-per-server=16",
+                "--split=16",
+                "--min-split-size=1M",
+                "--continue=true",
+                "--dir=downloads",  # default download folder
+                "--max-download-result=16000",  # allow tracking 15k+ completed downloads
+                "--quiet=true",
+            ]
+        )
         self.__wait_for_server_ready(timeout=15)
 
         client = aria2p.Client(host="http://localhost", port=self.rpc_port)
         return aria2p.API(client)
-    
+
     def download(self, dtos: list[DownloadDTO]) -> None:
         """Run the download process with async monitoring"""
         self.total_downloads = len(dtos)
@@ -69,11 +69,10 @@ class Aria2P(DownloadPolicy):
             self.stop()
             monitor.cancel()
             download.cancel()
-        finally:           
+        finally:
             loop.close()
 
     def _download_async(self, dtos: list[DownloadDTO]) -> None:
-        
         if not self.aria2:
             self.aria2 = self.start_aria2c()
 
@@ -81,46 +80,44 @@ class Aria2P(DownloadPolicy):
 
         while len(dtos) > 0:
             dto = dtos.pop()
-            
+
             if not self.overwrite and (Path(dto.path) / dto.name).exists():
                 self.total_downloads -= 1
                 continue
 
             headers = json.loads(dto.headers) if dto.headers else {}
             header_list = [f"{k}: {v}" for k, v in headers.items()] if isinstance(headers, dict) else []
-            
+
             while True:
                 try:
-                    download = self.aria2.add_uris([dto.url], options={"header": header_list, "dir": str(dto.path), "out": dto.name})
+                    download = self.aria2.add_uris(
+                        [dto.url], options={"header": header_list, "dir": str(dto.path), "out": dto.name}
+                    )
                     break  # Exit the loop if the download was added successfully
                 except Exception as e:
                     logger.error(f"Error while adding download: {e}")
                     time.sleep(2)
-        
-        logger.info(f"Finished adding downloads: {self.total_downloads} total.")
-    
-    def monitor_downloads(self):
 
+        logger.info(f"Finished adding downloads: {self.total_downloads} total.")
+
+    def monitor_downloads(self):
         if not self.aria2:
             self.aria2 = self.start_aria2c()
 
         logger.info(f"[ℹ️] Total files to download: {self.total_downloads}")
-        logger.info(f"[ℹ️] Using another terminal run `aria2p top` to monitor each download in real-time.")
+        logger.info("[ℹ️] Using another terminal run `aria2p top` to monitor each download in real-time.")
 
-        logger.debug(f"Starting listening to download notifications...")
+        logger.debug("Starting listening to download notifications...")
         self.aria2.listen_to_notifications(
-            threaded=True,
-            on_download_error=self.__on_download_error,
-            on_download_complete=self.__on_download_complete
-            )
-        
+            threaded=True, on_download_error=self.__on_download_error, on_download_complete=self.__on_download_complete
+        )
+
         logger.debug("Starting download monitoring...")
 
         total_downloads = self.total_downloads
-        with tqdm(total=self.total_downloads, 
-                  desc="Downloading files", 
-                  unit="file", position=0,
-                  dynamic_ncols=True) as progress:
+        with tqdm(
+            total=self.total_downloads, desc="Downloading files", unit="file", position=0, dynamic_ncols=True
+        ) as progress:
             while self.finished_downloads < total_downloads:
                 if total_downloads != self.total_downloads:
                     total_downloads = self.total_downloads
@@ -130,7 +127,6 @@ class Aria2P(DownloadPolicy):
                 progress.refresh()
 
         logger.info("[✅] All downloads finished.")
-    
 
     def __on_download_complete(self, api: aria2p.API, gid):
         self.cache.ensure_connection()
@@ -140,13 +136,12 @@ class Aria2P(DownloadPolicy):
         download.purge()
         self.finished_downloads += 1
 
-
     def __on_download_error(self, api: aria2p.API, gid):
         self.cache.ensure_connection()
         download = api.get_download(gid)
-        summary = f"A download failed"
+        summary = "A download failed"
         body = f"{download.name}\n{download.error_message} (code: {download.error_code})."
-        #logger.error(f"Download error for GID: {gid}, {body}\n {summary}")
+        # logger.error(f"Download error for GID: {gid}, {body}\n {summary}")
         # pop a desktop notification using notify-send
         # subprocess.call(["notify-send", "-t", "10000", summary, body])
         self.errors[download.name] = self.errors.get(download.name, 0) + 1
@@ -157,7 +152,6 @@ class Aria2P(DownloadPolicy):
             download.purge()
             self.finished_downloads += 1
 
-        
     def __update_download_status(self, d: aria2p.Download) -> bool:
         """Update the status of a single download."""
         if not self.aria2:
@@ -169,21 +163,25 @@ class Aria2P(DownloadPolicy):
         uri = d.files[0].uris[0].get("uri", "")
         dto = self.cache.fetch_by_url(uri)
         status = DownloadStatus.DONE.value if d.is_complete else DownloadStatus.WAITING.value
-        errors: dict | None = {'status': d.error_code, 'message': d.error_message} if d.has_failed else None
+        errors: dict | None = {"status": d.error_code, "message": d.error_message} if d.has_failed else None
         if dto:
             dto.status = status
             dto.errors = json.dumps(errors)
             self.cache.upsert(dto)
         else:
-            self.cache.bulk_insert([DownloadDTO(
-                url=self.aria2.client.get_uris(d.gid).get("uri", ""),
-                path=str(d.dir),
-                name=d.name,
-                status=status,
-                errors=json.dumps(errors) if errors else None,
-            )])
+            self.cache.bulk_insert(
+                [
+                    DownloadDTO(
+                        url=self.aria2.client.get_uris(d.gid).get("uri", ""),
+                        path=str(d.dir),
+                        name=d.name,
+                        status=status,
+                        errors=json.dumps(errors) if errors else None,
+                    )
+                ]
+            )
         return is_finished
-    
+
     def __wait_for_server_ready(self, timeout=10, interval=0.5):
         """Waits until the aria2 RPC server is accepting connections."""
         start_time = time.time()

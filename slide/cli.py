@@ -2,8 +2,6 @@ import argparse
 import os, sys
 
 from slide.database.collectionPolicy import AgpCollectionPolicy, LogCollectionPolicy
-from slide.database.models.agp import AgpLithologyDAO, AgpSummaryDAO
-from slide.database.models.log import LogDAO
 from slide.feature.agpExtractionPolicy import Lithology, Summary
 from slide.feature.featureExtractionEngine import FeatureEngine
 from slide.feature.logExtractionPolicy import LogChannelsExtractionPolicy, LogExtractionPolicy
@@ -31,12 +29,14 @@ def scrap_catalogs(data_path: str, download: bool, *args, **kwargs):
     downloader = Aria2P(cache_dao=dao) if download else None
     WebScrapperEngine(scrappers=scrapper, dao=dao, downloader=downloader).collect()
 
+
 def scrap_agp(data_path: str, download: bool, *args, **kwargs):
     c_dao = CatalogDownloadDAO(f"{data_path}/download.db")
     scrapper = [AgpScrapper(c) for c in c_dao.fetch_all()]
     dao = AGPDownloadDAO(f"{data_path}/download.db")
     downloader = Aria2P(cache_dao=dao) if download else None
     WebScrapperEngine(scrappers=scrapper, dao=dao, downloader=downloader).collect()
+
 
 def scrap_conventional_logs(data_path: str, download: bool, *args, **kwargs):
     c_dao = CatalogDownloadDAO(f"{data_path}/download.db")
@@ -45,11 +45,13 @@ def scrap_conventional_logs(data_path: str, download: bool, *args, **kwargs):
     downloader = Aria2P(cache_dao=dao) if download else None
     WebScrapperEngine(scrappers=scrapper, dao=dao, downloader=downloader).collect()
 
+
 def build_agp_lithology(data_path: str, *args, **kwargs):
     collection_policy = AgpCollectionPolicy(f"{data_path}/download.db")
     extraction_policy = Lithology()
     engine = FeatureEngine(policy=extraction_policy, data_collection_policy=collection_policy)
     engine.collect()
+
 
 def build_agp_summary(data_path: str, *args, **kwargs):
     collection_policy = AgpCollectionPolicy(f"{data_path}/download.db")
@@ -57,11 +59,13 @@ def build_agp_summary(data_path: str, *args, **kwargs):
     engine = FeatureEngine(policy=extraction_policy, data_collection_policy=collection_policy)
     engine.collect()
 
+
 def build_conventional_logs(data_path: str, *args, **kwargs):
     collection_policy = LogCollectionPolicy(f"{data_path}/download.db")
     extraction_policy = LogExtractionPolicy()
     engine = FeatureEngine(policy=extraction_policy, data_collection_policy=collection_policy)
     engine.collect()
+
 
 def build_logs_channels(data_path: str, *args, **kwargs):
     collection_policy = LogCollectionPolicy(f"{data_path}/download.db")
@@ -92,6 +96,7 @@ def make_shared_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentPa
     )
     return parser
 
+
 def make_scrap_subparsers() -> dict:
     scrap_subparsers = {}
     scrap_subparsers["catalogs"] = {
@@ -111,6 +116,7 @@ def make_scrap_subparsers() -> dict:
     }
     return scrap_subparsers
 
+
 def make_scrap_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
     parser.add_argument(
         "--download",
@@ -120,6 +126,7 @@ def make_scrap_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentPar
         help="Enable downloading of files. (yes/no, true/false, 1/0)",
         default=True,
     )
+
 
 def make_feature_subparsers() -> dict:
     feature_subparsers = {}
@@ -145,6 +152,7 @@ def make_feature_subparsers() -> dict:
     }
     return feature_subparsers
 
+
 def build_argparser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="SLIDE: A command line tool for Smart Line Identification and Data Extraction"
@@ -157,37 +165,30 @@ def build_argparser() -> argparse.ArgumentParser:
     parser_scrap = subparsers.add_parser(
         "scrap",
         help="Scrap the dataset from ANP basins database",
-        description="Create a spider to peform webscrapping at ANP basins database."
+        description="Create a spider to peform webscrapping at ANP basins database.",
     )
 
     scrap_subparsers = parser_scrap.add_subparsers(dest="scrap_type", required=True, help="Scrap subcommands")
 
     for name, opts in make_scrap_subparsers().items():
-        sub = scrap_subparsers.add_parser(
-            name,
-            help=opts["help"],
-            description=opts["description"]
-        )
+        sub = scrap_subparsers.add_parser(name, help=opts["help"], description=opts["description"])
         sub.set_defaults(func=opts["func"])
         sub = make_scrap_commands(sub)
 
     parser_scrap = subparsers.add_parser(
         "feature",
         help="Build the feature dataset from downloaded files",
-        description="Create a feature extraction engine to build the dataset from downloaded files."
+        description="Create a feature extraction engine to build the dataset from downloaded files.",
     )
 
     scrap_subparsers = parser_scrap.add_subparsers(dest="feature_type", required=True, help="Feature subcommands")
 
     for name, opts in make_feature_subparsers().items():
-        sub = scrap_subparsers.add_parser(
-            name,
-            help=opts["help"],
-            description=opts["description"]
-        )
+        sub = scrap_subparsers.add_parser(name, help=opts["help"], description=opts["description"])
         sub.set_defaults(func=opts["func"])
 
     return parser
+
 
 def cli() -> None:
     """Main entry point for the slide command line interface."""
@@ -199,7 +200,7 @@ def cli() -> None:
 
     try:
         args.func(**args_dict)
-    except Exception as e:
+    except Exception:
         raise
     os._exit(0)
 
