@@ -5,13 +5,13 @@ db_path = Path(__file__).parent / "slide" / "database" / "features.db"
 
 conn = sqlite3.connect(db_path)
 conn.enable_load_extension(True)
-conn.load_extension('regex0.dll')
+conn.load_extension("regex0.dll")
 
 query = """
 DROP TABLE IF EXISTS agp_intervals;
 CREATE TABLE IF NOT EXISTS agp_intervals AS
 WITH agp_clean AS (
-  SELECT  
+  SELECT
         replace(
             regex_replace(
                 '([A-Za-z]*|^0[0-9])0+([A-Za-z0-9])',
@@ -27,10 +27,10 @@ WITH agp_clean AS (
     bottom,
     rock
   FROM agp_clean;
-  
+
  CREATE INDEX IF NOT EXISTS lithology_well_intervals
 	ON agp_intervals (well, bottom);
-  
+
  CREATE INDEX IF NOT EXISTS logs_well_depth_btree
   ON LogsFeatures (well, depth);
 """
@@ -42,7 +42,7 @@ conn.commit()
 features = """
 DROP TABLE IF EXISTS Features;
 CREATE TABLE IF NOT EXISTS Features AS
-SELECT 
+SELECT
 	fl.well AS well,
 	fl.depth,
 	fl.GR,
