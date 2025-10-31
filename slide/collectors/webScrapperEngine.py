@@ -12,6 +12,7 @@ class WebScrapperEngine(WebScrapper):
     This engine is responsible for managing the catalog scraping process for all basins available.
     """
 
+    # TODO: remove dao from parameters and instantiate downloadCollectionPolicy in self.policy
     def __init__(
         self, scrappers: list[Scrapper] | Scrapper, dao: DownloadDAO, downloader: DownloadPolicy | None = None
     ) -> None:
@@ -31,6 +32,8 @@ class WebScrapperEngine(WebScrapper):
 
         logger.info(f"Collected {len(dtos)} items from all scrappers.")
         logger.info("Inserting collected items into the database.")
+        
+        # TODO: change self.dao to self.policy.save
         self.dao.bulk_insert(dtos)
         logger.info("Insertion completed.")
 

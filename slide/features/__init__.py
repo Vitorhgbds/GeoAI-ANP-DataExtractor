@@ -7,10 +7,10 @@ class PostProcessingPolicy(ABC):
         pass
 
 
-class FeatureExtractionEngine(ABC):
-    def __init__(self, policy: PostProcessingPolicy) -> None:
-        self.policy: PostProcessingPolicy = policy
+class FeatureExtractor(ABC):
+    def __init__(self, processor: PostProcessingPolicy) -> None:
+        self.processor: PostProcessingPolicy = processor
 
     @abstractmethod
-    def collect(self) -> list:
+    def extract(self) -> list:
         pass

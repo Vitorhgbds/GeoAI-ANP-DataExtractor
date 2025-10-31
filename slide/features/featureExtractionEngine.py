@@ -4,7 +4,7 @@ import signal
 from tqdm import tqdm
 from slide.database import DataCollectionPolicy
 from slide.database.models.base import BaseDTO
-from slide.features import FeatureExtractionEngine, PostProcessingPolicy
+from slide.features import FeatureExtractor, PostProcessingPolicy
 from slide.logger import Logger
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Event
@@ -13,7 +13,7 @@ logging = Logger()
 logger = logging.get_logger()
 
 
-class FeatureEngine(FeatureExtractionEngine):
+class FeatureExtractorEngine(FeatureExtractor):
     def __init__(self, data_collection_policy: DataCollectionPolicy, policy: PostProcessingPolicy | None = None) -> None:
         self.data_collection_policy = data_collection_policy
         super().__init__(policy)
@@ -33,12 +33,12 @@ class FeatureEngine(FeatureExtractionEngine):
             logger.warning(f"File {d.path}/{d.name} does not exist. Skipping.")
             return None
 
-        features = self.policy.process(d)
+        features = self.processor.process(d)
         if features:
             self.data_collection_policy.save(features)
         return features
 
-    def collect(self) -> None:
+    def extract(self) -> None:
         logger.info("Starting data collection to extract features.")
         data = self.data_collection_policy.collect()
         logger.info(f"Collected {len(data)} items for post-processing.")
