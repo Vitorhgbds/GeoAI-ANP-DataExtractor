@@ -1,6 +1,6 @@
 from slide.database.models.download import LogDownloadDTO
 from slide.database.models.log import LogChannelsDTO, LogDTO
-from slide.feature import FeatureExtractionPolicy
+from slide.features import PostProcessingPolicy
 from dlisio import dlis
 from dlisio.dlis import LogicalFile, Channel
 from slide.logger import Logger
@@ -10,11 +10,11 @@ logging = Logger()
 logger = logging.get_logger()
 
 
-class LogExtractionPolicy(FeatureExtractionPolicy):
+class LogExtractionPolicy(PostProcessingPolicy):
     def __init__(self) -> None:
         pass
 
-    def extract(self, log: LogDownloadDTO) -> list[dict]:
+    def process(self, log: LogDownloadDTO) -> list[dict]:
         file_name = f"{log.path}/{log.name}"
         valid_channels = ["CALI", "SP", "GR", "DT", "ILD", "RHOB", "NPHI", "DRHO", "MSFL", "SFLU"]
 
@@ -75,11 +75,14 @@ class LogExtractionPolicy(FeatureExtractionPolicy):
         return data_points
 
 
-class LogChannelsExtractionPolicy(FeatureExtractionPolicy):
-    def __init__(self) -> None:
-        pass
+class LogChannelsExtractionPolicy(PostProcessingPolicy):
+    """ Extraction Policy responsible to extract log channel information from DLIS files.
+    The extracted information includes the channel names and the total number of data points for each channel.
+    
+    NOTE: We used this extraction policy to analyze the available channels and their relevancy in the DLIS files.
+    """
 
-    def extract(self, log: LogDownloadDTO) -> list[dict]:
+    def process(self, log: LogDownloadDTO) -> list[dict]:
         file_name = f"{log.path}/{log.name}"
         try:
             with dlis.load(f"{file_name}") as dlis_file:

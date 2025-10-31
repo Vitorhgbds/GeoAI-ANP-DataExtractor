@@ -4,7 +4,7 @@ import signal
 from tqdm import tqdm
 from slide.database import DataCollectionPolicy
 from slide.database.models.base import BaseDTO
-from slide.feature import FeatureExtractionEngine, FeatureExtractionPolicy
+from slide.features import FeatureExtractionEngine, PostProcessingPolicy
 from slide.logger import Logger
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Event
@@ -14,7 +14,7 @@ logger = logging.get_logger()
 
 
 class FeatureEngine(FeatureExtractionEngine):
-    def __init__(self, policy: FeatureExtractionPolicy, data_collection_policy: DataCollectionPolicy) -> None:
+    def __init__(self, data_collection_policy: DataCollectionPolicy, policy: PostProcessingPolicy | None = None) -> None:
         self.data_collection_policy = data_collection_policy
         super().__init__(policy)
         # Setup signal handler for Ctrl+C
@@ -33,18 +33,18 @@ class FeatureEngine(FeatureExtractionEngine):
             logger.warning(f"File {d.path}/{d.name} does not exist. Skipping.")
             return None
 
-        features = self.policy.extract(d)
+        features = self.policy.process(d)
         if features:
             self.data_collection_policy.save(features)
         return features
 
     def collect(self) -> None:
-        logger.info("Starting data collection for feature extraction.")
+        logger.info("Starting data collection to extract features.")
         data = self.data_collection_policy.collect()
-        logger.info(f"Collected {len(data)} items for feature extraction.")
+        logger.info(f"Collected {len(data)} items for post-processing.")
 
         if not data:
-            logger.info("No data to process.")
+            logger.info("No data for post processing.")
             return
 
         # Use ThreadPoolExecutor for CPU-bound tasks

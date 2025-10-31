@@ -3,10 +3,10 @@ import re
 from typing import Tuple
 from slide.database.models.agp import AgpLithologyDTO, AgpSummaryDTO
 from slide.database.models.download import DownloadDTO
-from slide.feature import FeatureExtractionPolicy
+from slide.features import PostProcessingPolicy
 
 
-class AgpTableExtractor(FeatureExtractionPolicy, ABC):
+class AgpTableExtractor(PostProcessingPolicy, ABC):
     def __init__(self):
         self.well = None
         self.basin = None
@@ -41,7 +41,7 @@ class AgpTableExtractor(FeatureExtractionPolicy, ABC):
             match = re.search(reg, content[0:2000], re.DOTALL)
             self.well = match.group("POCO").strip() if match else None
 
-    def extract(self, data: DownloadDTO) -> list:
+    def process(self, data: DownloadDTO) -> list:
         self.agp = f"{data.path}/{data.name}"
         self.well = None
         self.basin = None

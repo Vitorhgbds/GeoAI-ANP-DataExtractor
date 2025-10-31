@@ -2,14 +2,14 @@ import argparse
 import os, sys
 
 from slide.database.collectionPolicy import AgpCollectionPolicy, LogCollectionPolicy
-from slide.feature.agpExtractionPolicy import Lithology, Summary
-from slide.feature.featureExtractionEngine import FeatureEngine
-from slide.feature.logExtractionPolicy import LogChannelsExtractionPolicy, LogExtractionPolicy
-from slide.logger import Logger
-from slide.downloaders import Aria2P
-from slide.webscrapper import CatalogScrapper, AgpScrapper, WebScrapperEngine
 from slide.database import AGPDownloadDAO, CatalogDownloadDAO, LogDownloadDAO
-from slide.webscrapper import ConventionalLogScrapper
+from slide.collectors import Aria2P
+from slide.collectors import CatalogScrapper, AgpScrapper, WebScrapperEngine
+from slide.collectors import ConventionalLogScrapper
+from slide.features.agpExtractionPolicy import Lithology, Summary
+from slide.features.featureExtractionEngine import FeatureEngine
+from slide.features.logExtractionPolicy import LogChannelsExtractionPolicy, LogExtractionPolicy
+from slide.logger import Logger
 
 logging = Logger()
 logger = logging.get_logger()
@@ -23,14 +23,14 @@ def str2bool(v):
     return False
 
 
-def scrap_catalogs(data_path: str, download: bool, *args, **kwargs):
+def collect_catalogs(data_path: str, download: bool, *args, **kwargs):
     scrapper = CatalogScrapper(out_dir=data_path)
     dao = CatalogDownloadDAO(f"{data_path}/download.db")
     downloader = Aria2P(cache_dao=dao) if download else None
     WebScrapperEngine(scrappers=scrapper, dao=dao, downloader=downloader).collect()
 
 
-def scrap_agp(data_path: str, download: bool, *args, **kwargs):
+def collect_agp(data_path: str, download: bool, *args, **kwargs):
     c_dao = CatalogDownloadDAO(f"{data_path}/download.db")
     scrapper = [AgpScrapper(c) for c in c_dao.fetch_all()]
     dao = AGPDownloadDAO(f"{data_path}/download.db")
@@ -38,7 +38,7 @@ def scrap_agp(data_path: str, download: bool, *args, **kwargs):
     WebScrapperEngine(scrappers=scrapper, dao=dao, downloader=downloader).collect()
 
 
-def scrap_conventional_logs(data_path: str, download: bool, *args, **kwargs):
+def collect_conventional_logs(data_path: str, download: bool, *args, **kwargs):
     c_dao = CatalogDownloadDAO(f"{data_path}/download.db")
     scrapper = [ConventionalLogScrapper(c) for c in c_dao.fetch_all()]
     dao = LogDownloadDAO(f"{data_path}/download.db")
@@ -102,17 +102,17 @@ def make_scrap_subparsers() -> dict:
     scrap_subparsers["catalogs"] = {
         "help": "Scrap the catalogs from ANP basins database",
         "description": "Create a spider to peform webscrapping of catalogs at ANP basins database.",
-        "func": scrap_catalogs,
+        "func": collect_catalogs,
     }
     scrap_subparsers["agp"] = {
         "help": "Scrap the AGP files from ANP basins database",
         "description": "Create a spider to peform webscrapping of AGP files at ANP basins database.",
-        "func": scrap_agp,
+        "func": collect_agp,
     }
     scrap_subparsers["conventional-logs"] = {
         "help": "Scrap the conventional logs from ANP basins database",
         "description": "Create a spider to peform webscrapping of conventional logs at ANP basins database.",
-        "func": scrap_conventional_logs,
+        "func": collect_conventional_logs,
     }
     return scrap_subparsers
 

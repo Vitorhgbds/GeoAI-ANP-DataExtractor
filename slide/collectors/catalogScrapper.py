@@ -9,7 +9,7 @@ from slide.database.models.download import CatalogDownloadDTO, DownloadStatus
 from slide.logger import Logger
 from slide.providers.cache import CacheProvider
 from . import Scrapper
-from slide.webscrapper.authPolicy import ANPAuthPolicy
+from slide.collectors.authPolicy import ANPAuthPolicy
 
 logging = Logger()
 logger = logging.get_logger()
