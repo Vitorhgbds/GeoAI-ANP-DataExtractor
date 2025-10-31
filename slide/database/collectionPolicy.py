@@ -5,7 +5,7 @@ from slide.database.dataCollectionPolicy import DataCollectionPolicy, DataCollec
 from slide.database.models.agp import AgpLithologyDTO, AgpSummaryDAO, AgpSummaryDTO, AgpLithologyDAO
 from slide.database.models.download import AGPDownloadDAO, AGPDownloadDTO, LogDownloadDAO, LogDownloadDTO
 from slide.database.models.log import LogChannelsDAO, LogChannelsDTO, LogDAO, LogDTO
-from slide.downloaders.aria2p import Aria2P
+from slide.collectors import Aria2P
 
 from slide.logger import Logger
 

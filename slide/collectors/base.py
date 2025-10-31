@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from slide.downloaders import DownloadPolicy
+from slide.collectors import DownloadPolicy
 
 
 class Scrapper(ABC):
