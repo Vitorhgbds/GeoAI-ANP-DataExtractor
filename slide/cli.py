@@ -1,4 +1,5 @@
 import argparse
+from pathlib import Path
 import os, sys
 
 from slide.database.collectionPolicy import AgpCollectionPolicy, LogCollectionPolicy
@@ -25,50 +26,50 @@ def str2bool(v):
 
 def collect_catalogs(data_path: str, download: bool, *args, **kwargs):
     scrapper = CatalogScrapper(out_dir=data_path)
-    dao = CatalogDownloadDAO(f"{data_path}/download.db")
+    dao = CatalogDownloadDAO(Path(__file__).parent / "database" / "download.db")
     downloader = Aria2P(cache_dao=dao) if download else None
     WebScrapperEngine(scrappers=scrapper, dao=dao, downloader=downloader).collect()
 
 
 def collect_agp(data_path: str, download: bool, *args, **kwargs):
-    c_dao = CatalogDownloadDAO(f"{data_path}/download.db")
+    c_dao = CatalogDownloadDAO(Path(__file__).parent / "database" / "download.db")
     scrapper = [AgpScrapper(c) for c in c_dao.fetch_all()]
-    dao = AGPDownloadDAO(f"{data_path}/download.db")
+    dao = AGPDownloadDAO(Path(__file__).parent / "database" / "download.db")
     downloader = Aria2P(cache_dao=dao) if download else None
     WebScrapperEngine(scrappers=scrapper, dao=dao, downloader=downloader).collect()
 
 
 def collect_conventional_logs(data_path: str, download: bool, *args, **kwargs):
-    c_dao = CatalogDownloadDAO(f"{data_path}/download.db")
+    c_dao = CatalogDownloadDAO(Path(__file__).parent / "database" / "download.db")
     scrapper = [ConventionalLogScrapper(c) for c in c_dao.fetch_all()]
-    dao = LogDownloadDAO(f"{data_path}/download.db")
+    dao = LogDownloadDAO(Path(__file__).parent / "database" / "download.db")
     downloader = Aria2P(cache_dao=dao) if download else None
     WebScrapperEngine(scrappers=scrapper, dao=dao, downloader=downloader).collect()
 
 
 def build_agp_lithology(data_path: str, *args, **kwargs):
-    collection_policy = AgpCollectionPolicy(f"{data_path}/download.db")
+    collection_policy = AgpCollectionPolicy(Path(__file__).parent / "database" / "download.db")
     extraction_policy = Lithology()
     engine = FeatureExtractorEngine(policy=extraction_policy, data_collection_policy=collection_policy)
     engine.collect()
 
 
 def build_agp_summary(data_path: str, *args, **kwargs):
-    collection_policy = AgpCollectionPolicy(f"{data_path}/download.db")
+    collection_policy = AgpCollectionPolicy(Path(__file__).parent / "database" / "download.db")
     extraction_policy = Summary()
     engine = FeatureExtractorEngine(policy=extraction_policy, data_collection_policy=collection_policy)
     engine.collect()
 
 
 def build_conventional_logs(data_path: str, *args, **kwargs):
-    collection_policy = LogCollectionPolicy(f"{data_path}/download.db")
+    collection_policy = LogCollectionPolicy(Path(__file__).parent / "database" / "download.db")
     extraction_policy = LogExtractionPolicy()
     engine = FeatureExtractorEngine(policy=extraction_policy, data_collection_policy=collection_policy)
     engine.collect()
 
 
 def build_logs_channels(data_path: str, *args, **kwargs):
-    collection_policy = LogCollectionPolicy(f"{data_path}/download.db")
+    collection_policy = LogCollectionPolicy(Path(__file__).parent / "database" / "download.db")
     extraction_policy = LogChannelsExtractionPolicy()
     engine = FeatureExtractorEngine(policy=extraction_policy, data_collection_policy=collection_policy)
     engine.collect()
