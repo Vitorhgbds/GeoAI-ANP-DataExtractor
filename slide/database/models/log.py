@@ -1,5 +1,5 @@
 from pathlib import Path
-from slide.database.models.base import BaseDAO, BaseDTO
+from slide.database import BaseDAO, BaseDTO
 
 
 class LogDTO(BaseDTO):

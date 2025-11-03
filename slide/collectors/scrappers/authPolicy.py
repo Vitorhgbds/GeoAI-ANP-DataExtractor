@@ -1,16 +1,10 @@
-from abc import ABC, abstractmethod
 import base64
 from typing import Tuple
 
 from bs4 import BeautifulSoup, Tag
 import requests
 
-
-class AuthPolicy(ABC):
-    @abstractmethod
-    def get(self) -> list:
-        pass
-
+from slide.collectors import AuthPolicy
 
 class ANPAuthPolicy(AuthPolicy):
     """

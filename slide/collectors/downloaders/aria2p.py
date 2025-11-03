@@ -88,14 +88,21 @@ class Aria2P(DownloadPolicy):
             headers = json.loads(dto.headers) if dto.headers else {}
             header_list = [f"{k}: {v}" for k, v in headers.items()] if isinstance(headers, dict) else []
 
+            tries = 0
             while True:
                 try:
                     download = self.aria2.add_uris(
                         [dto.url], options={"header": header_list, "dir": str(dto.path), "out": dto.name}
                     )
+                    tries = 0
                     break  # Exit the loop if the download was added successfully
                 except Exception as e:
                     logger.error(f"Error while adding download: {e}")
+                    tries += 1
+                    if tries >= 10:
+                        logger.error(f"Failed to add download for {dto.url} after {tries} attempts. Skipping.")
+                        self.total_downloads -= 1
+                        break
                     time.sleep(2)
 
         logger.info(f"Finished adding downloads: {self.total_downloads} total.")

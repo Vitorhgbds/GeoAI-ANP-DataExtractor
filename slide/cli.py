@@ -7,7 +7,7 @@ from slide.collectors import Aria2P
 from slide.collectors import CatalogScrapper, AgpScrapper, WebScrapperEngine
 from slide.collectors import ConventionalLogScrapper
 from slide.features.agpExtractionPolicy import Lithology, Summary
-from slide.features.featureExtractionEngine import FeatureEngine
+from slide.features.featureExtractorEngine import FeatureExtractorEngine
 from slide.features.logExtractionPolicy import LogChannelsExtractionPolicy, LogExtractionPolicy
 from slide.logger import Logger
 
@@ -49,28 +49,28 @@ def collect_conventional_logs(data_path: str, download: bool, *args, **kwargs):
 def build_agp_lithology(data_path: str, *args, **kwargs):
     collection_policy = AgpCollectionPolicy(f"{data_path}/download.db")
     extraction_policy = Lithology()
-    engine = FeatureEngine(policy=extraction_policy, data_collection_policy=collection_policy)
+    engine = FeatureExtractorEngine(policy=extraction_policy, data_collection_policy=collection_policy)
     engine.collect()
 
 
 def build_agp_summary(data_path: str, *args, **kwargs):
     collection_policy = AgpCollectionPolicy(f"{data_path}/download.db")
     extraction_policy = Summary()
-    engine = FeatureEngine(policy=extraction_policy, data_collection_policy=collection_policy)
+    engine = FeatureExtractorEngine(policy=extraction_policy, data_collection_policy=collection_policy)
     engine.collect()
 
 
 def build_conventional_logs(data_path: str, *args, **kwargs):
     collection_policy = LogCollectionPolicy(f"{data_path}/download.db")
     extraction_policy = LogExtractionPolicy()
-    engine = FeatureEngine(policy=extraction_policy, data_collection_policy=collection_policy)
+    engine = FeatureExtractorEngine(policy=extraction_policy, data_collection_policy=collection_policy)
     engine.collect()
 
 
 def build_logs_channels(data_path: str, *args, **kwargs):
     collection_policy = LogCollectionPolicy(f"{data_path}/download.db")
     extraction_policy = LogChannelsExtractionPolicy()
-    engine = FeatureEngine(policy=extraction_policy, data_collection_policy=collection_policy)
+    engine = FeatureExtractorEngine(policy=extraction_policy, data_collection_policy=collection_policy)
     engine.collect()
 
 

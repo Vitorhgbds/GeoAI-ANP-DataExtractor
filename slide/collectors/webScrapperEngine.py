@@ -1,5 +1,5 @@
 from slide.database.models.download import DownloadDAO
-from .base import WebScrapper, Scrapper
+from slide.collectors import WebScrapper, Scrapper
 from slide.collectors import DownloadPolicy
 from slide.logger import Logger
 

@@ -3,7 +3,7 @@ import signal
 
 from tqdm import tqdm
 from slide.database import DataCollectionPolicy
-from slide.database.models.base import BaseDTO
+from slide.database import BaseDTO
 from slide.features import FeatureExtractor, PostProcessingPolicy
 from slide.logger import Logger
 from concurrent.futures import ThreadPoolExecutor, as_completed

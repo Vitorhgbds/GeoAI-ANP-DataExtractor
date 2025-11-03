@@ -8,7 +8,7 @@ from slide.commons import BASE_URL, WELL_URL
 from slide.database.models.download import CatalogDownloadDTO, DownloadStatus
 from slide.logger import Logger
 from slide.providers.cache import CacheProvider
-from . import Scrapper
+from slide.collectors import Scrapper
 from slide.collectors.authPolicy import ANPAuthPolicy
 
 logging = Logger()
