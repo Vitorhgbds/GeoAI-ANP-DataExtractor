@@ -9,7 +9,7 @@ from slide.database.models.download import (
     DownloadStatus,
     LogDownloadDTO,
 )
-from slide.collectors import Scrapper
+from slide.collectors.interfaces import Scrapper
 
 
 class FileScrapper(Scrapper, ABC):

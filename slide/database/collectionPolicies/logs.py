@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from slide.database.dataCollectionPolicy import DataCollectionPolicy, DataCollectionPolicy
+from slide.database.collectionPolicies.ICollectionPolicy import DataCollectionPolicy, DataCollectionPolicy
 from slide.database.models.download import LogDownloadDAO, LogDownloadDTO
 from slide.database.models.log import LogChannelsDAO, LogChannelsDTO, LogDAO, LogDTO
 from slide.collectors import Aria2P

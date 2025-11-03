@@ -1,6 +1,6 @@
 from slide.database.models.download import LogDownloadDTO
 from slide.database.models.log import LogChannelsDTO, LogDTO
-from slide.features import PostProcessingPolicy
+from slide.features.interfaces import PostProcessingPolicy
 from dlisio import dlis
 from dlisio.dlis import LogicalFile, Channel
 from slide.logger import Logger

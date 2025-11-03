@@ -4,7 +4,7 @@ from typing import Tuple
 from bs4 import BeautifulSoup, Tag
 import requests
 
-from slide.collectors import AuthPolicy
+from slide.collectors.interfaces import AuthPolicy
 
 class ANPAuthPolicy(AuthPolicy):
     """

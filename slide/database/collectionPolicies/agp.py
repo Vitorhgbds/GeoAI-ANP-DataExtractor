@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from slide.database.dataCollectionPolicy import DataCollectionPolicy, DataCollectionPolicy
+from slide.database.collectionPolicies.ICollectionPolicy import DataCollectionPolicy, DataCollectionPolicy
 from slide.database.models.agp import AgpLithologyDTO, AgpSummaryDAO, AgpSummaryDTO, AgpLithologyDAO
 from slide.database.models.download import AGPDownloadDAO, AGPDownloadDTO
 

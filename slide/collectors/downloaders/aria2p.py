@@ -6,7 +6,7 @@ import time
 import aria2p
 import socket
 from slide.database.models.download import DownloadDAO, DownloadDTO, DownloadStatus
-from slide.collectors import DownloadPolicy
+from slide.collectors.interfaces import DownloadPolicy
 from slide.logger import Logger
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor

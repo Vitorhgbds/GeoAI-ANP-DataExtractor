@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from slide.database import BaseDAO, BaseDTO, CustomField
+from slide.database.models.base import BaseDAO, BaseDTO, CustomField
 
 
 class DownloadStatus(Enum):

@@ -1,6 +1,6 @@
 from slide.database.models.download import DownloadDAO
-from slide.collectors import WebScrapper, Scrapper
-from slide.collectors import DownloadPolicy
+from slide.collectors.interfaces import WebScrapper, Scrapper
+from slide.collectors.interfaces import DownloadPolicy
 from slide.logger import Logger
 
 logging = Logger()

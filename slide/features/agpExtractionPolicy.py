@@ -3,7 +3,7 @@ import re
 from typing import Tuple
 from slide.database.models.agp import AgpLithologyDTO, AgpSummaryDTO
 from slide.database.models.download import DownloadDTO
-from slide.features import PostProcessingPolicy
+from slide.features.interfaces import PostProcessingPolicy
 
 
 class AgpTableExtractor(PostProcessingPolicy, ABC):

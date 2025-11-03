@@ -1,7 +1,7 @@
 from pathlib import Path
 import sqlite3
 
-from slide.database.dataCollectionPolicy import DataCollectionPolicy, DataCollectionPolicy
+from slide.database.collectionPolicies.ICollectionPolicy import DataCollectionPolicy, DataCollectionPolicy
 
 from slide.logger import Logger
 
