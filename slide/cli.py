@@ -2,7 +2,7 @@ import argparse
 from pathlib import Path
 import os, sys
 
-from slide.database.collectionPolicy import AgpCollectionPolicy, LogCollectionPolicy
+from slide.database import AgpCollectionPolicy, LogCollectionPolicy
 from slide.database import AGPDownloadDAO, CatalogDownloadDAO, LogDownloadDAO
 from slide.collectors import Aria2P
 from slide.collectors import CatalogScrapper, AgpScrapper, WebScrapperEngine

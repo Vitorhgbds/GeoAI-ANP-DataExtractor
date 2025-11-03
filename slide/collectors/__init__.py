@@ -1,5 +1,5 @@
-from slide.collectors.fileScrapper import LogScrapper, FileScrapper, ConventionalLogScrapper, AgpScrapper
-from slide.collectors.catalogScrapper import CatalogScrapper
+from slide.collectors.scrappers.fileScrapper import LogScrapper, FileScrapper, ConventionalLogScrapper, AgpScrapper
+from slide.collectors.scrappers.catalogScrapper import CatalogScrapper
 from slide.collectors.webScrapperEngine import WebScrapperEngine
 from slide.collectors.downloaders.aria2p import Aria2P
 

@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from slide.collectors.downloaders.downloadPolicy import DownloadPolicy
 from slide.database.models.download import DownloadDTO
 
 class DownloadPolicy(ABC):
