@@ -68,6 +68,6 @@ class LogCollectionPolicy(DataCollectionPolicy):
 
     def save(self, records: list[LogDTO] | list[LogChannelsDTO]) -> None:
         dao_class = LogDAO if isinstance(records[0], LogDTO) else LogChannelsDAO
-        dao = dao_class(Path(__file__).parent.parent.parent / "features.db")
+        dao = dao_class(Path(__file__).parent.parent / "features.db")
         dao.bulk_insert(records)
         logger.debug(f"Saved {len(records)} records to the database features.db.")

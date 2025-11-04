@@ -2,7 +2,7 @@ import argparse
 from pathlib import Path
 import os, sys
 
-from slide.database import AgpCollectionPolicy, LogCollectionPolicy
+from slide.database import AgpCollectionPolicy, LogCollectionPolicy, FeatureCollectionPolicy
 from slide.database import AGPDownloadDAO, CatalogDownloadDAO, LogDownloadDAO
 from slide.collectors import Aria2P
 from slide.collectors import CatalogScrapper, AgpScrapper, WebScrapperEngine
@@ -51,28 +51,34 @@ def build_agp_lithology(data_path: str, *args, **kwargs):
     collection_policy = AgpCollectionPolicy(Path(__file__).parent / "database" / "download.db")
     extraction_policy = Lithology()
     engine = FeatureExtractorEngine(policy=extraction_policy, data_collection_policy=collection_policy)
-    engine.collect()
+    engine.extract()
 
 
 def build_agp_summary(data_path: str, *args, **kwargs):
     collection_policy = AgpCollectionPolicy(Path(__file__).parent / "database" / "download.db")
     extraction_policy = Summary()
     engine = FeatureExtractorEngine(policy=extraction_policy, data_collection_policy=collection_policy)
-    engine.collect()
+    engine.extract()
 
 
 def build_conventional_logs(data_path: str, *args, **kwargs):
     collection_policy = LogCollectionPolicy(Path(__file__).parent / "database" / "download.db")
     extraction_policy = LogExtractionPolicy()
     engine = FeatureExtractorEngine(policy=extraction_policy, data_collection_policy=collection_policy)
-    engine.collect()
+    engine.extract()
 
 
 def build_logs_channels(data_path: str, *args, **kwargs):
     collection_policy = LogCollectionPolicy(Path(__file__).parent / "database" / "download.db")
     extraction_policy = LogChannelsExtractionPolicy()
     engine = FeatureExtractorEngine(policy=extraction_policy, data_collection_policy=collection_policy)
-    engine.collect()
+    engine.extract()
+    
+
+def build_feature_dataset(data_path: str, *args, **kwargs):
+    collection_policy = FeatureCollectionPolicy(Path(__file__).parent / "database" / "download.db")
+    engine = FeatureExtractorEngine(data_collection_policy=collection_policy)
+    engine.extract()
 
 
 def make_shared_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
@@ -150,6 +156,11 @@ def make_feature_subparsers() -> dict:
         "help": "Build the logs channels feature dataset from downloaded conventional log files",
         "description": "Create a feature extraction engine to build the logs channels dataset from downloaded conventional log files.",
         "func": build_logs_channels,
+    }
+    feature_subparsers["feature-dataset"] = {
+        "help": "Build the final feature dataset from extracted features",
+        "description": "Create a feature extraction engine to build the final feature dataset from extracted features.",
+        "func": build_feature_dataset,
     }
     return feature_subparsers
 

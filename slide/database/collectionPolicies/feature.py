@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 import sqlite3
 
@@ -14,12 +15,14 @@ class FeatureCollectionPolicy(DataCollectionPolicy):
         super().__init__(db_path, *args, **kwargs)
         
     def collect(self) -> list:
-        db_path = Path(__file__).parent.parent.parent / "features.db"
+        db_path = Path(__file__).parent.parent / "features.db"
 
         conn = sqlite3.connect(db_path)
         conn.enable_load_extension(True)
-        conn.load_extension("regex0.dll")
-
+        
+        current_file_path = Path(__file__).resolve()
+        conn.load_extension(str(current_file_path.parent.parent / "models" / f"regex0.{'dll' if os.name == 'nt' else 'so'}"))
+        
         query = """
         DROP TABLE IF EXISTS agp_intervals;
         CREATE TABLE IF NOT EXISTS agp_intervals AS

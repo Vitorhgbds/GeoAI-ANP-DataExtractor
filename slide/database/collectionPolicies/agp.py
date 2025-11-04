@@ -22,5 +22,5 @@ class AgpCollectionPolicy(DataCollectionPolicy):
         dao = dao_class(f"{self.db_path}")
         dao.bulk_insert(records)
 
-        dao = dao_class(Path(__file__).parent.parent.parent / "features.db")
+        dao = dao_class(Path(__file__).parent.parent / "features.db")
         dao.bulk_insert(records)
