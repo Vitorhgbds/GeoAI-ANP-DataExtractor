@@ -7,6 +7,12 @@ from slide.database import AGPDownloadDAO, CatalogDownloadDAO, LogDownloadDAO
 from slide.collectors import Aria2P
 from slide.collectors import CatalogScrapper, AgpScrapper, WebScrapperEngine
 from slide.collectors import ConventionalLogScrapper
+from slide.models.featurePolicy import Default
+from slide.models.engine import ModelEngine
+from slide.models.forest import RandomForest
+from slide.models.xgboost import XGBoost
+from slide.models.knn import KNN
+from slide.models.lstm import LSTM
 from slide.features.agpExtractionPolicy import Lithology, Summary
 from slide.features.featureExtractorEngine import FeatureExtractorEngine
 from slide.features.logExtractionPolicy import LogChannelsExtractionPolicy, LogExtractionPolicy
@@ -79,6 +85,31 @@ def build_feature_dataset(data_path: str, *args, **kwargs):
     collection_policy = FeatureCollectionPolicy(Path(__file__).parent / "database" / "download.db")
     engine = FeatureExtractorEngine(data_collection_policy=collection_policy)
     engine.extract()
+
+
+def train_random_forest_model(*args, **kwargs):
+    policy = Default()
+    model = RandomForest()
+    engine = ModelEngine(policy=policy, model=model)
+    engine.build()
+    
+def train_xgboost_model(*args, **kwargs):
+    policy = Default()
+    model = XGBoost()
+    engine = ModelEngine(policy=policy, model=model)
+    engine.build()
+    
+def train_knn_model(*args, **kwargs):
+    policy = Default()
+    model = KNN()
+    engine = ModelEngine(policy=policy, model=model)
+    engine.build()
+
+def train_lstm_model(*args, **kwargs):
+    policy = Default()
+    model = LSTM()
+    engine = ModelEngine(policy=policy, model=model)
+    engine.build()
 
 
 def make_shared_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
@@ -165,6 +196,30 @@ def make_feature_subparsers() -> dict:
     return feature_subparsers
 
 
+def make_train_subparsers() -> dict:
+    train_subparsers = {}
+    train_subparsers["random-forest"] = {
+        "help": "Train a Random Forest model using the feature dataset",
+        "description": "Create a model training engine to train a Random Forest model using the feature dataset.",
+        "func": train_random_forest_model,
+    }
+    train_subparsers["xgboost"] = {
+        "help": "Train an XGBoost model using the feature dataset",
+        "description": "Create a model training engine to train an XGBoost model using the feature dataset.",
+        "func": train_xgboost_model,
+    }
+    train_subparsers["knn"] = {
+        "help": "Train a KNN model using the feature dataset",
+        "description": "Create a model training engine to train a KNN model using the feature dataset.",
+        "func": train_knn_model,
+    }
+    train_subparsers["lstm"] = {
+        "help": "Train an LSTM model using the feature dataset",
+        "description": "Create a model training engine to train an LSTM model using the feature dataset.",
+        "func": train_lstm_model,
+    }
+    return train_subparsers
+
 def build_argparser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="SLIDE: A command line tool for Smart Line Identification and Data Extraction"
@@ -197,6 +252,18 @@ def build_argparser() -> argparse.ArgumentParser:
 
     for name, opts in make_feature_subparsers().items():
         sub = scrap_subparsers.add_parser(name, help=opts["help"], description=opts["description"])
+        sub.set_defaults(func=opts["func"])
+
+    parser_train = subparsers.add_parser(
+        "train",
+        help="Train machine learning models using the feature dataset",
+        description="Create a model training engine to train machine learning models using the feature dataset.",
+    )
+    
+    train_subparsers = parser_train.add_subparsers(dest="train_type", required=True, help="Train subcommands")
+    
+    for name, opts in make_train_subparsers().items():
+        sub = train_subparsers.add_parser(name, help=opts["help"], description=opts["description"])
         sub.set_defaults(func=opts["func"])
 
     return parser
