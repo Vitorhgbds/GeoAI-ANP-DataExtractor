@@ -1,17 +1,16 @@
-from slide.models import ModelBuilder
 
 
-class ModelBuilderEngine(ModelBuilder):
+from slide.models import BaseModel, ModelBuilderEngine, FeatureProcessingPolicy
 
-    def build(self):
+
+class ModelEngine(ModelBuilderEngine):
+    
+    def __init__(self, policy: FeatureProcessingPolicy, model: BaseModel) -> None:
+        super().__init__(policy, model)
         
-        data = self.collector.collect()
-        
-        processed_data = self.processor.process(data)
-        
-        self.model.train(processed_data)
-        
-        evaluation_results = self.model.evaluate(processed_data)
-        
-        self.model.save("model_path")
-        return evaluation_results
+    def build(self) -> BaseModel:
+        modelDataset = self.policy.fetch()
+        self.model.train(modelDataset)
+        self.model.evaluate(modelDataset)
+        self.model.save()
+        return self.model

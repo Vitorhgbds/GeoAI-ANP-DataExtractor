@@ -1,48 +1,39 @@
 from abc import ABC, abstractmethod
-from slide.database import DataCollectionPolicy
+from typing import NamedTuple
 
+ModelDataset = NamedTuple('ModelDataset', [('train', list), ('train_target', list), ('test', list), ('test_target', list)])
 
 class BaseModel(ABC):
-    
-    @abstractmethod
-    def train(self, data):
-        pass
-    
-    @abstractmethod
-    def predict(self, input_data):
-        pass
-    
-    @abstractmethod
-    def evaluate(self, test_data):
-        pass
-    
-    @abstractmethod
-    def save(self, file_path):
-        pass
-    
-class PreprocessingPolicy(ABC):
     def __init__(self):
+        self.model = None
+    
+    @abstractmethod
+    def train(self, data: ModelDataset) -> None:
         pass
+    
+    @abstractmethod
+    def predict(self, input_data: list) -> list:
+        pass
+    
+    @abstractmethod
+    def evaluate(self, test_data: ModelDataset) -> dict:
+        pass
+    
+    @abstractmethod
+    def save(self, file_path: str) -> None:
+        pass
+
+class FeatureProcessingPolicy(ABC):
+    @abstractmethod
+    def fetch(self) -> ModelDataset:
+        pass
+
+
+class ModelBuilderEngine(ABC):
+    def __init__(self, policy: FeatureProcessingPolicy, model: BaseModel) -> None:
+        self.policy: FeatureProcessingPolicy = policy
+        self.model: BaseModel = model
 
     @abstractmethod
-    def process(self, data):
-        # Placeholder for preprocessing logic
+    def build(self) -> BaseModel:
         pass
-    
-    
-class ModelBuilder(ABC):
-
-    def __init__(self, model: BaseModel, collector: DataCollectionPolicy, processor: PreprocessingPolicy):
-        self.model = model
-        self.collector = collector
-        self.processor = processor
-
-    @abstractmethod
-    def build(self, config):
-        pass
-    
-__all__ = [
-    "BaseModel",
-    "PreprocessingPolicy",
-    "ModelBuilder",
-]
