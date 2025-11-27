@@ -24,7 +24,7 @@ plotly = "^6.3.1"
 nbformat = "^5.10.4"
 scipy = "^1.16.2"
 scikit-learn = "^1.7.2"
-mlflow = "^3.5.1"
+xgboost = "^3.1.2"
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = ">=4.1.0,<5.0.0"
