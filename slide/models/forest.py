@@ -3,10 +3,12 @@
 from slide.logger import Logger
 from slide.models import BaseModel, ModelDataset
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import cross_val_score
 from sklearn.metrics import classification_report, confusion_matrix
 import json
 import pickle
+import optuna
+import gc
 
 logging = Logger()
 logger = logging.get_logger()
@@ -14,6 +16,44 @@ logger = logging.get_logger()
 class RandomForest(BaseModel):
     def __init__(self):
         super().__init__()
+        
+    def __objective(self, trial: optuna.Trial, X_train, y_train):
+        logger.info(f"Starting trial {trial.number} for hyperparameter optimization.")
+        # Suggest hyperparameters
+        # Number of trees
+        n_estimators = trial.suggest_categorical("n_estimators", [50, 100, 200, 300])
+        # Tree depth
+        max_depth = trial.suggest_categorical("max_depth",[15, 20, 25, None])
+        # Features considered for split
+        max_features = trial.suggest_categorical("max_features", ["sqrt", "log2", 0.5])
+        # Bootstrap sample size
+        max_samples = trial.suggest_categorical("max_samples", [0.7, 0.8])
+        # Handle class imbalance
+        class_weight = trial.suggest_categorical("class_weight", ["balanced", None])
+        
+        # Create the model with suggested hyperparameters
+        model = RandomForestClassifier(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            max_features=max_features,
+            max_samples=max_samples,
+            class_weight=class_weight,
+            random_state=42,
+            n_jobs=20,
+            bootstrap=True
+        )
+    
+        # Evaluate the model using cross-validation
+        try:
+            score = cross_val_score(
+                model, X_train, y_train,
+                cv=3, scoring="accuracy",
+                n_jobs=1
+            ).mean()
+        finally:
+            del model
+            gc.collect()
+            return score
     
     def train(self, data: ModelDataset) -> None:
         # Remove rows with missing target values
@@ -22,32 +62,13 @@ class RandomForest(BaseModel):
         train_data_clean = data.train[train_mask]
         train_target_clean = data.train_target[train_mask]
         
-        param_grid = {
-            'n_estimators': [50, 100, 200, 300],           # Number of trees
-            'max_depth': [15, 20, 25, None],           # Tree depth (None = unlimited)
-            'min_samples_split': [10, 20, 50],         # Min samples to split a node
-            'min_samples_leaf': [5, 10, 20],           # Min samples in leaf nodes
-            'max_features': ['sqrt', 'log2', 0.5],     # Features considered for split
-            'max_samples': [0.7, 0.8, None],           # Bootstrap sample size (None = use all)
-            'class_weight': ['balanced', None]         # Handle class imbalance
-        }
+        # Specify the SQLite database file
+        storage = "sqlite:///optuna_studies.db"
+    
+        study = optuna.create_study(direction="maximize", storage=storage, study_name="random_forest_optimization", load_if_exists=True)
+        study.optimize(lambda trial: self.__objective(trial, train_data_clean, train_target_clean), n_trials=50, gc_after_trial=True, show_progress_bar=True)
         
-        grid_search = GridSearchCV(
-            estimator=RandomForestClassifier(
-                random_state=42,
-                n_jobs=-1,
-                bootstrap=True,      # Enable bootstrap sampling
-                oob_score=True,      # Out-of-bag score for validation
-                ),
-            param_grid=param_grid,
-            cv=3,
-            scoring='accuracy',
-            verbose=1,
-            n_jobs=-1
-        )
-        grid_search.fit(train_data_clean, train_target_clean)
-        self.model = grid_search.best_estimator_
-        logger.info(f"Best Random Forest parameters: {grid_search.best_params_}")
+        logger.info(f"Best hyperparameters: {study.best_params}")
         
     
     def predict(self, input_data: list) -> list:

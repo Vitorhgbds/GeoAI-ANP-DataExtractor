@@ -12,6 +12,8 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from torch.optim import Adam
+import optuna
+import gc
 
 logging = Logger()
 logger = logging.get_logger()
@@ -21,10 +23,10 @@ class WellLogDataset(Dataset):
     def __init__(self, sequences, targets):
         self.sequences = torch.FloatTensor(sequences)
         self.targets = torch.LongTensor(targets)
-    
+
     def __len__(self):
         return len(self.sequences)
-    
+
     def __getitem__(self, idx):
         return self.sequences[idx], self.targets[idx]
 
@@ -34,7 +36,7 @@ class LSTMModel(nn.Module):
         super(LSTMModel, self).__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
-        
+
         self.lstm = nn.LSTM(
             input_size=input_size,
             hidden_size=hidden_size,
@@ -42,14 +44,14 @@ class LSTMModel(nn.Module):
             batch_first=True,
             dropout=dropout if num_layers > 1 else 0
         )
-        
+
         self.fc = nn.Linear(hidden_size, num_classes)
         self.dropout = nn.Dropout(dropout)
-        
+
     def forward(self, x):
         # x shape: (batch, sequence_length, input_size)
         lstm_out, (h_n, c_n) = self.lstm(x)
-        
+
         # Use the last hidden state
         out = self.dropout(h_n[-1])
         out = self.fc(out)
@@ -62,120 +64,168 @@ class LSTM(BaseModel):
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         self.dropout = dropout
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.label_encoder = LabelEncoder()
         logger.info(f"Using device: {self.device}")
-    
+
     def _create_sequences(self, df, features_columns, target_column):
         """Create sequences for LSTM from well log data"""
         sequences = []
         targets = []
         wells = []
-        
-        # Get unique wells
-        unique_wells = df['well'].unique() if 'well' in df.columns else [0]
-        
+
+        unique_wells = df["well"].unique() if "well" in df.columns else [0]
+
         for well in unique_wells:
-            if 'well' in df.columns:
-                well_data = df[df['well'] == well].sort_values('depth')
+            if "well" in df.columns:
+                well_data = df[df["well"] == well].sort_values("depth")
             else:
-                well_data = df.sort_values('depth')
-            
-            # Get features and target
+                well_data = df.sort_values("depth")
+
             features = well_data[features_columns].fillna(0).values
             labels = well_data[target_column].values
-            
-            # Create sequences
+
             for i in range(len(well_data) - self.sequence_length):
-                seq = features[i:i+self.sequence_length]
-                target = labels[i+self.sequence_length]
-                
-                # Only include if target is valid
+                seq = features[i : i + self.sequence_length]
+                target = labels[i + self.sequence_length]
+
                 if pd.notna(target):
                     sequences.append(seq)
                     targets.append(target)
                     wells.append(well)
-        
+
         return np.array(sequences), np.array(targets), np.array(wells)
-    
+
+    def __train_one(
+        self,
+        train_sequences: np.ndarray,
+        train_targets_encoded: np.ndarray,
+        *,
+        hidden_size: int,
+        num_layers: int,
+        dropout: float,
+        batch_size: int,
+        learning_rate: float,
+        epochs: int,
+    ) -> float:
+        """Train one configuration and return training accuracy (fast objective)."""
+        train_dataset = WellLogDataset(train_sequences, train_targets_encoded)
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+
+        input_size = train_sequences.shape[2]
+        num_classes = int(np.max(train_targets_encoded) + 1)
+
+        model = LSTMModel(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            num_classes=num_classes,
+            dropout=dropout,
+        ).to(self.device)
+
+        criterion = nn.CrossEntropyLoss()
+        optimizer = Adam(model.parameters(), lr=learning_rate)
+
+        model.train()
+        for _ in range(epochs):
+            for sequences, targets in train_loader:
+                sequences = sequences.to(self.device)
+                targets = targets.to(self.device)
+
+                outputs = model(sequences)
+                loss = criterion(outputs, targets)
+
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+
+        # compute train accuracy
+        model.eval()
+        correct, total = 0, 0
+        with torch.no_grad():
+            for sequences, targets in train_loader:
+                sequences = sequences.to(self.device)
+                targets = targets.to(self.device)
+                outputs = model(sequences)
+                _, predicted = torch.max(outputs.data, 1)
+                total += targets.size(0)
+                correct += (predicted == targets).sum().item()
+
+        acc = float(correct / max(total, 1))
+
+        # cleanup
+        del model, train_dataset, train_loader, criterion, optimizer
+        if self.device.type == "cuda":
+            torch.cuda.empty_cache()
+        gc.collect()
+
+        return acc
+
+    def __objective(self, trial: optuna.Trial, train_sequences, train_targets_encoded):
+        logger.info(f"Starting trial {trial.number} for hyperparameter optimization.")
+
+        hidden_size = trial.suggest_categorical("hidden_size", [64, 128, 256])
+        num_layers = trial.suggest_int("num_layers", 1, 3)
+        dropout = trial.suggest_float("dropout", 0.0, 0.5)
+        batch_size = trial.suggest_categorical("batch_size", [32, 64, 128])
+        learning_rate = trial.suggest_categorical("learning_rate", [1e-4, 3e-4, 1e-3])
+
+        # keep objective trials reasonably fast
+        epochs = trial.suggest_categorical("epochs", [10, 20])
+
+        try:
+            score = self.__train_one(
+                train_sequences,
+                train_targets_encoded,
+                hidden_size=hidden_size,
+                num_layers=num_layers,
+                dropout=dropout,
+                batch_size=batch_size,
+                learning_rate=learning_rate,
+                epochs=epochs,
+            )
+            return score
+        finally:
+            if self.device.type == "cuda":
+                torch.cuda.empty_cache()
+            gc.collect()
+
     def train(self, data: ModelDataset, epochs=50, batch_size=32, learning_rate=0.001) -> None:
         logger.info("Preparing sequential data for LSTM training...")
-        
-        # Get feature columns (exclude well, depth, target)
-        feature_columns = [col for col in data.train.columns if col not in ['well', 'depth', 'rock']]
-        
-        # Create sequences
+
+        feature_columns = [col for col in data.train.columns if col not in ["well", "depth", "rock"]]
+
         train_sequences, train_targets, _ = self._create_sequences(
             pd.concat([data.train, data.train_target], axis=1),
             feature_columns,
-            'rock'
+            "rock",
         )
-        
+
         logger.info(f"Created {len(train_sequences)} training sequences")
         logger.info(f"Sequence shape: {train_sequences.shape}")
-        
-        # Encode labels
+
         train_targets_encoded = self.label_encoder.fit_transform(train_targets)
         num_classes = len(self.label_encoder.classes_)
         logger.info(f"Number of classes: {num_classes}")
         logger.info(f"Classes: {self.label_encoder.classes_}")
-        
-        # Create dataset and dataloader
-        train_dataset = WellLogDataset(train_sequences, train_targets_encoded)
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-        
-        # Initialize model
-        input_size = train_sequences.shape[2]
-        self.model = LSTMModel(
-            input_size=input_size,
-            hidden_size=self.hidden_size,
-            num_layers=self.num_layers,
-            num_classes=num_classes,
-            dropout=self.dropout
-        ).to(self.device)
-        
-        # Loss and optimizer
-        criterion = nn.CrossEntropyLoss()
-        optimizer = Adam(self.model.parameters(), lr=learning_rate)
-        
-        # Training loop
-        logger.info("Starting LSTM training...")
-        self.model.train()
-        
-        for epoch in range(epochs):
-            total_loss = 0
-            correct = 0
-            total = 0
-            
-            for sequences, targets in train_loader:
-                sequences = sequences.to(self.device)
-                targets = targets.to(self.device)
-                
-                # Forward pass
-                outputs = self.model(sequences)
-                loss = criterion(outputs, targets)
-                
-                # Backward pass
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-                
-                # Statistics
-                total_loss += loss.item()
-                _, predicted = torch.max(outputs.data, 1)
-                total += targets.size(0)
-                correct += (predicted == targets).sum().item()
-            
-            epoch_loss = total_loss / len(train_loader)
-            epoch_acc = 100 * correct / total
-            
-            if (epoch + 1) % 5 == 0:
-                logger.info(f'Epoch [{epoch+1}/{epochs}], Loss: {epoch_loss:.4f}, Accuracy: {epoch_acc:.2f}%')
-        
-        logger.info("LSTM training completed!")
-        self.input_size = input_size
-        self.num_classes = num_classes
-        self.feature_columns = feature_columns
+
+        storage = "sqlite:///optuna_studies.db"
+        study = optuna.create_study(
+            direction="maximize",
+            storage=storage,
+            study_name="lstm_optimization",
+            load_if_exists=True,
+        )
+
+        study.optimize(
+            lambda trial: self.__objective(trial, train_sequences, train_targets_encoded),
+            n_trials=50,
+            gc_after_trial=True,
+            show_progress_bar=True,
+        )
+
+        logger.info(f"Best hyperparameters: {study.best_params}")
+
         
     
     def predict(self, input_data: list) -> list:

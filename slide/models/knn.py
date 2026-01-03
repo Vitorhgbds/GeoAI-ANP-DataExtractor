@@ -3,12 +3,14 @@
 import numpy as np
 from slide.logger import Logger
 from slide.models import BaseModel, ModelDataset
-from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import cross_val_score
 from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.impute import SimpleImputer
 import json
 import pickle
+import optuna
+import gc
 
 logging = Logger()
 logger = logging.get_logger()
@@ -17,7 +19,39 @@ class KNN(BaseModel):
     def __init__(self):
         super().__init__()
         self.imputer = None
-    
+
+    def __objective(self, trial: optuna.Trial, X_train, y_train):
+        logger.info(f"Starting trial {trial.number} for hyperparameter optimization.")
+        
+        # Suggest hyperparameters
+        n_neighbors = trial.suggest_int("n_neighbors", 3, 15, step=2)
+        weights = trial.suggest_categorical("weights", ["uniform", "distance"])
+        metric = trial.suggest_categorical("metric", ["euclidean", "manhattan", "minkowski"])
+        p = trial.suggest_int("p", 1, 2)  # Only relevant for Minkowski metric
+        algorithm = trial.suggest_categorical("algorithm", ["auto", "ball_tree", "kd_tree"])
+        
+        # Create the model with suggested hyperparameters
+        model = KNeighborsClassifier(
+            n_neighbors=n_neighbors,
+            weights=weights,
+            metric=metric,
+            p=p,
+            algorithm=algorithm,
+            n_jobs=20
+        )
+        
+        # Evaluate the model using cross-validation
+        try:
+            score = cross_val_score(
+                model, X_train, y_train,
+                cv=3, scoring="accuracy",
+                n_jobs=1
+            ).mean()
+        finally:
+            del model
+            gc.collect()
+            return score
+
     def train(self, data: ModelDataset) -> None:
         # Remove rows with missing target values
         train_mask = data.train_target.notna()
@@ -29,27 +63,15 @@ class KNN(BaseModel):
         self.imputer = SimpleImputer(strategy='median')
         train_data_imputed = self.imputer.fit_transform(train_data_clean)
         
-        param_grid = {
-            'n_neighbors': [3, 5, 7, 9, 11, 15],
-            'weights': ['uniform', 'distance'],
-            'metric': ['euclidean', 'manhattan', 'minkowski'],
-            'p': [1, 2],  # Power parameter for Minkowski metric
-            'algorithm': ['auto', 'ball_tree', 'kd_tree']
-        }
+        # Specify the SQLite database file
+        storage = "sqlite:///optuna_studies.db"
         
-        grid_search = GridSearchCV(
-            estimator=KNeighborsClassifier(
-                n_jobs=-1
-            ),
-            param_grid=param_grid,
-            cv=3,  # 3-fold cross-validation
-            scoring='accuracy',
-            verbose=2,
-            n_jobs=-1
-        )
-        grid_search.fit(train_data_imputed, train_target_clean)
-        self.model = grid_search.best_estimator_
-        logger.info(f"Best KNN parameters: {grid_search.best_params_}")
+        # Create or load an Optuna study
+        study = optuna.create_study(direction="maximize", storage=storage, study_name="knn_optimization", load_if_exists=True)
+        study.optimize(lambda trial: self.__objective(trial, train_data_imputed, train_target_clean), n_trials=168)
+        
+        logger.info(f"Best hyperparameters: {study.best_params}")
+        
         
     
     def predict(self, input_data: list) -> list:
