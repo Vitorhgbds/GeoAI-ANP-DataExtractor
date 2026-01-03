@@ -54,28 +54,6 @@ class FeatureExtractorEngine(FeatureExtractor):
             for d in tqdm(data, desc="Extracting features", unit="file", position=0, dynamic_ncols=True):
                 self.process_item(d)
 
-            # with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            #     # Submit all tasks
-            #     future_to_item = {executor.submit(self.process_item, d): d for d in data}
-
-            #     # Process completed tasks with progress bar
-            #     with tqdm(total=len(data), desc="Extracting features", position=0, unit="file") as pbar:
-            #         for future in as_completed(future_to_item):
-            #             if self.stop_event.is_set():
-            #                 logger.info("Cancelling remaining tasks...")
-            #                 # Cancel remaining futures
-            #                 for f in future_to_item:
-            #                     f.cancel()
-            #                 break
-
-            #             try:
-            #                 result = future.result()
-            #                 pbar.update(1)
-            #             except Exception as e:
-            #                 item = future_to_item[future]
-            #                 logger.error(f"Error processing {item}: {e}")
-            #                 pbar.update(1)
-
         except KeyboardInterrupt:
             logger.error("Feature extraction interrupted by user.")
             self.stop_event.set()

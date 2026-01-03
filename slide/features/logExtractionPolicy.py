@@ -51,7 +51,7 @@ class LogExtractionPolicy(PostProcessingPolicy):
             logger.error(f"Error processing DLIS file {file_name}: {e}")
             return []
 
-        data_points = self.__post_processing(records)
+        #data_points = self.__post_processing(records)
         data_points = [
             LogDTO(
                 well=log.well,

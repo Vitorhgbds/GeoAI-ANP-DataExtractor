@@ -11,6 +11,6 @@ class ModelEngine(ModelBuilderEngine):
     def build(self) -> BaseModel:
         modelDataset = self.policy.fetch()
         self.model.train(modelDataset)
-        self.model.evaluate(modelDataset)
-        self.model.save()
+        #self.model.evaluate(modelDataset)
+        #self.model.save()
         return self.model

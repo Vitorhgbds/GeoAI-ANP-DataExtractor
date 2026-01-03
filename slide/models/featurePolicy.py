@@ -4,14 +4,14 @@
 
 from pathlib import Path
 import sqlite3
+from slide.logger import Logger
 from slide.models import ModelDataset, FeatureProcessingPolicy
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
 
-DEFAULT_QUERY = """
 
-"""
+logger = Logger().get_logger()
 
 class Default(FeatureProcessingPolicy):
     
@@ -41,13 +41,23 @@ class Default(FeatureProcessingPolicy):
     
     
     def fetch(self) -> ModelDataset:
-        database_path = Path(__file__).parent / "database" / "features.db"
+        database_path = Path(__file__).parent.parent / "database" / "features.db"
         
+        logger.info(f"Fetching features from database at {database_path}")
         conn = sqlite3.connect(database_path)
         
-        query = "SELECT * FROM Features;"
+        logger.debug("Connected to the database successfully.")
+        logger.debug("Executing SQL query to fetch features.")
+        query = """
+            WITH wells AS (
+                SELECT DISTINCT well FROM Features limit 200
+            )
+            SELECT * FROM Features JOIN wells W USING (well) WHERE Features.rock IS NOT NULL;
+            """
         df_features = pd.read_sql_query(query, conn)
         
+        logger.debug(f"Fetched {len(df_features)} rows from the database.")
+        logger.debug(f"Total wells fetched: {len(df_features['well'].unique())}")
         target_column = 'rock'
         features_columns = [
                 'depth',
@@ -97,8 +107,11 @@ class Default(FeatureProcessingPolicy):
         for col in features_columns:
             df_features[f'{col}_is_null'] = df_features[col].isnull().astype(int)
 
+        logger.debug("Completed data cleaning and preprocessing steps.")
+        logger.debug(f"Dataframe shape after cleaning: {df_features.shape}")
+        logger.debug(f"Dataframe sample after cleaning: {df_features.head()}")
         # Get unique wells
-        unique_wells = df_features['well'].unique() if 'well' in df_features.columns else df_features['well'].unique()
+        unique_wells = df_features['well'].unique()
 
         # Add sequential features BEFORE splitting
         df_features = self._add_sequential_features(df_features, features_columns)
