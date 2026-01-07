@@ -259,3 +259,12 @@ class LSTM(BaseModel):
 
         logger.info(f"Best hyperparameters: {study.best_params}")
 
+
+    def evaluate(self, test_data):
+        return super().evaluate(test_data)
+    
+    def predict(self, input_data):
+        return super().predict(input_data)
+    
+    def save(self):
+        pass
