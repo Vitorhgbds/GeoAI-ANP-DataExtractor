@@ -139,6 +139,9 @@ class SequentialFeatures(FeatureProcessingPolicy):
         train_data = train_data[feature_cols]
         test_data = test_data[feature_cols]
                 
+        
+        logger.debug(f"Num of features: {len(feature_cols)}")
+        
         return ModelDataset(train=train_data, train_target=train_target, test=test_data, test_target=test_target)
     
 
@@ -230,5 +233,7 @@ class DefaultFeatures(FeatureProcessingPolicy):
         feature_cols = features_columns + [f'{col}_is_null' for col in features_columns]
         train_data = train_data[feature_cols]
         test_data = test_data[feature_cols]
+        
+        logger.debug(f"Num of features: {len(feature_cols)}")
                 
         return ModelDataset(train=train_data, train_target=train_target, test=test_data, test_target=test_target)

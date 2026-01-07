@@ -201,7 +201,7 @@ class LSTM(BaseModel):
     def train(self, data: ModelDataset) -> None:
         logger.info("Preparing sequential data for LSTM training...")
         
-         # Remove rows with missing target values
+        # Remove rows with missing target values
         train_mask = data.train_target.notna()
         
         train_data_clean = data.train[train_mask]
