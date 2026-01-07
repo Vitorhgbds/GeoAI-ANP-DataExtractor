@@ -77,11 +77,10 @@ class LSTM(BaseModel):
     def __objective(self, trial: optuna.Trial, X_train, y_train, x_test, y_test):
         logger.info(f"Starting trial {trial.number} for hyperparameter optimization.")
 
-        hidden_size = trial.suggest_categorical("hidden_size", [64, 128, 256])
-        num_layers = trial.suggest_int("num_layers", 1, 3, step=1)
+        hidden_size = trial.suggest_categorical("hidden_size", [128, 256])
+        num_layers = trial.suggest_int("num_layers", 2, 3, step=1)
         dropout = trial.suggest_float("dropout", 0.0, 0.3, step=0.1)
-        batch_size = trial.suggest_categorical("batch_size", [32, 64, 128])
-        learning_rate = trial.suggest_categorical("learning_rate", [1e-4, 3e-4, 1e-3])
+        batch_size = trial.suggest_categorical("batch_size", [64, 128])
 
         # keep objective trials reasonably fast
         epochs = trial.suggest_categorical("epochs", [30, 50])
@@ -97,7 +96,7 @@ class LSTM(BaseModel):
         
         # Create DataLoaders (pin_memory helps CPU→GPU transfer)
         train_dataset = TensorDataset(train_sequences_tensor, train_targets_tensor)
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=True)
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=False, pin_memory=True)
         test_dataset = TensorDataset(test_sequences_tensor, test_targets_tensor)
         test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, pin_memory=True)
         
@@ -111,7 +110,7 @@ class LSTM(BaseModel):
             ).to(DEVICE)
             
             criterion = nn.CrossEntropyLoss()
-            optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+            optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
             train_losses = []
             train_accs = []

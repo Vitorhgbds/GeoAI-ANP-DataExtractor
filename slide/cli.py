@@ -7,7 +7,7 @@ from slide.database import AGPDownloadDAO, CatalogDownloadDAO, LogDownloadDAO
 from slide.collectors import Aria2P
 from slide.collectors import CatalogScrapper, AgpScrapper, WebScrapperEngine
 from slide.collectors import ConventionalLogScrapper
-from slide.models.featurePolicy import Default
+from slide.models.featurePolicy import DefaultFeatures, SequentialFeatures
 from slide.models.engine import ModelEngine
 from slide.models.forest import RandomForest
 from slide.models.xgboost import XGBoost
@@ -88,25 +88,25 @@ def build_feature_dataset(data_path: str, *args, **kwargs):
 
 
 def train_random_forest_model(*args, **kwargs):
-    policy = Default()
+    policy = SequentialFeatures()
     model = RandomForest()
     engine = ModelEngine(policy=policy, model=model)
     engine.build()
     
 def train_xgboost_model(*args, **kwargs):
-    policy = Default()
+    policy = SequentialFeatures()
     model = XGBoost()
     engine = ModelEngine(policy=policy, model=model)
     engine.build()
     
 def train_knn_model(*args, **kwargs):
-    policy = Default()
+    policy = SequentialFeatures()
     model = KNN()
     engine = ModelEngine(policy=policy, model=model)
     engine.build()
 
 def train_lstm_model(*args, **kwargs):
-    policy = Default()
+    policy = DefaultFeatures()
     model = LSTM()
     engine = ModelEngine(policy=policy, model=model)
     engine.build()
