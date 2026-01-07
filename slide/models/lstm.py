@@ -20,9 +20,6 @@ logging = Logger()
 logger = logging.get_logger()
 
 SEQUENCE_LENGTH = 10  # Use 10 consecutive depth readings
-NUM_EPOCHS = 30
-BATCH_SIZE = 64
-LEARNING_RATE = 0.001
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -166,7 +163,7 @@ class LSTM(BaseModel):
                 test_accs.append(test_acc)
                 
                 if (epoch + 1) % 5 == 0:
-                    logger.info(f"Epoch {epoch+1}/{NUM_EPOCHS} | Loss: {train_loss:.4f} | "
+                    logger.info(f"Epoch {epoch+1}/{epochs} | Loss: {train_loss:.4f} | "
                         f"Train Acc: {train_acc:.4f} | Test Acc: {test_acc:.4f}")
 
             logger.info(f"\n{'='*60}")
