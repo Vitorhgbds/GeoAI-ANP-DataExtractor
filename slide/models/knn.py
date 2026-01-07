@@ -1,9 +1,8 @@
 
 
-import numpy as np
+from sklearn.metrics import accuracy_score
 from slide.logger import Logger
 from slide.models import BaseModel, ModelDataset
-from sklearn.model_selection import cross_val_score
 from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.impute import SimpleImputer
@@ -20,55 +19,67 @@ class KNN(BaseModel):
         super().__init__()
         self.imputer = None
 
-    def __objective(self, trial: optuna.Trial, X_train, y_train):
+    def __objective(self, trial: optuna.Trial, X_train, y_train, x_test, y_test):
         logger.info(f"Starting trial {trial.number} for hyperparameter optimization.")
         
         # Suggest hyperparameters
-        n_neighbors = trial.suggest_int("n_neighbors", 3, 15, step=2)
-        weights = trial.suggest_categorical("weights", ["uniform", "distance"])
-        metric = trial.suggest_categorical("metric", ["euclidean", "manhattan", "minkowski"])
-        p = trial.suggest_int("p", 1, 2)  # Only relevant for Minkowski metric
-        algorithm = trial.suggest_categorical("algorithm", ["auto", "ball_tree", "kd_tree"])
-        
+        params = {
+        "n_neighbors": trial.suggest_int("n_neighbors", 3, 15, step=2),
+        "weights": trial.suggest_categorical("weights", ["uniform", "distance"]),
+        "p": trial.suggest_int("p", 1, 2),  # Only relevant for Minkowski metric
+        "algorithm": trial.suggest_categorical("algorithm", ["auto", "ball_tree", "kd_tree"])
+        }
         # Create the model with suggested hyperparameters
         model = KNeighborsClassifier(
-            n_neighbors=n_neighbors,
-            weights=weights,
-            metric=metric,
-            p=p,
-            algorithm=algorithm,
-            n_jobs=20
+            **params,
+            metric="minkowski",
+            n_jobs=25
         )
-        
-        # Evaluate the model using cross-validation
         try:
-            score = cross_val_score(
-                model, X_train, y_train,
-                cv=3, scoring="accuracy",
-                n_jobs=1
-            ).mean()
+            logger.info(f"Starting training KNN with params: {params}")
+            model.fit(X_train, y_train)
+            
+            logger.info("Calculating training vs test accuracy")
+            # Make predictions
+            train_predictions = model.predict(X_train)
+            test_predictions = model.predict(x_test)
+            
+            # Calculate accuracies
+            train_accuracy = accuracy_score(y_train, train_predictions)
+            test_accuracy = accuracy_score(y_test, test_predictions)
+        
+            trial.set_user_attr("train_accuracy", float(train_accuracy))
+            trial.set_user_attr("test_accuracy", float(test_accuracy))
+            
+            report = classification_report(y_test, test_predictions, output_dict=True)
+            trial.set_user_attr("classification_report", report)
+            # Evaluate the model using cross-validation
+            return float(test_accuracy)
         finally:
             del model
             gc.collect()
-            return score
 
     def train(self, data: ModelDataset) -> None:
         # Remove rows with missing target values
         train_mask = data.train_target.notna()
+        test_mask = data.test_target.notna()
 
         train_data_clean = data.train[train_mask]
         train_target_clean = data.train_target[train_mask]
+        test_data_clean = data.test[test_mask]
+        test_target_clean = data.test_target[test_mask]
         
         # Impute missing values (KNN requires no missing values)
         self.imputer = SimpleImputer(strategy='median')
         train_data_imputed = self.imputer.fit_transform(train_data_clean)
+        test_data_imputed = self.imputer.transform(test_data_clean)
         
         # Specify the SQLite database file
         storage = "sqlite:///optuna_studies.db"
         
         # Create or load an Optuna study
         study = optuna.create_study(direction="maximize", storage=storage, study_name="knn_optimization", load_if_exists=True)
-        study.optimize(lambda trial: self.__objective(trial, train_data_imputed, train_target_clean), n_trials=168)
+        study.optimize(lambda trial: self.__objective(trial, train_data_imputed, train_target_clean, test_data_imputed, test_target_clean), n_trials=50, gc_after_trial=True)
         
         logger.info(f"Best hyperparameters: {study.best_params}")
         

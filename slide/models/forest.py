@@ -1,5 +1,6 @@
 
 
+from sklearn.metrics import accuracy_score
 from slide.logger import Logger
 from slide.models import BaseModel, ModelDataset
 from sklearn.ensemble import RandomForestClassifier
@@ -17,56 +18,66 @@ class RandomForest(BaseModel):
     def __init__(self):
         super().__init__()
         
-    def __objective(self, trial: optuna.Trial, X_train, y_train):
+    def __objective(self, trial: optuna.Trial, X_train, y_train, x_test, y_test):
         logger.info(f"Starting trial {trial.number} for hyperparameter optimization.")
-        # Suggest hyperparameters
-        # Number of trees
-        n_estimators = trial.suggest_categorical("n_estimators", [50, 100, 200, 300])
-        # Tree depth
-        max_depth = trial.suggest_categorical("max_depth",[15, 20, 25, None])
-        # Features considered for split
-        max_features = trial.suggest_categorical("max_features", ["sqrt", "log2", 0.5])
-        # Bootstrap sample size
-        max_samples = trial.suggest_categorical("max_samples", [0.7, 0.8])
-        # Handle class imbalance
-        class_weight = trial.suggest_categorical("class_weight", ["balanced", None])
         
-        # Create the model with suggested hyperparameters
-        model = RandomForestClassifier(
-            n_estimators=n_estimators,
-            max_depth=max_depth,
-            max_features=max_features,
-            max_samples=max_samples,
-            class_weight=class_weight,
-            random_state=42,
-            n_jobs=20,
-            bootstrap=True
-        )
-    
-        # Evaluate the model using cross-validation
+        # Suggest hyperparameters
+        params = {
+            "n_estimators": trial.suggest_categorical("n_estimators", [200, 300, 400, 500]),
+            "min_samples_split": trial.suggest_int("min_samples_split", 2, 16, step=4),
+            "max_features": trial.suggest_categorical("max_features", ["sqrt", "log2", 0.5]),
+            "max_samples": trial.suggest_categorical("max_samples", [0.7, 0.8]),
+            "class_weight": trial.suggest_categorical("class_weight", ["balanced", None])
+        }
+        
         try:
-            score = cross_val_score(
-                model, X_train, y_train,
-                cv=3, scoring="accuracy",
-                n_jobs=1
-            ).mean()
+            # Create the model with suggested hyperparameters
+            model = RandomForestClassifier(
+                **params,
+                random_state=42,
+                n_jobs=25,
+                bootstrap=True
+            )
+            
+            logger.info(f"Training the model")
+            model.fit(X_train, y_train)
+            
+            logger.info("Calculating training vs test accuracy")
+            # Make predictions
+            train_predictions = model.predict(X_train)
+            test_predictions = model.predict(x_test)
+
+            # Calculate accuracies
+            train_accuracy = accuracy_score(y_train, train_predictions)
+            test_accuracy = accuracy_score(y_test, test_predictions)
+        
+            trial.set_user_attr("train_accuracy", float(train_accuracy))
+            trial.set_user_attr("test_accuracy", float(test_accuracy))
+            
+            report = classification_report(y_test, test_predictions, output_dict=True)
+            trial.set_user_attr("classification_report", report)
+            # Evaluate the model using cross-validation
+            return float(test_accuracy)
         finally:
             del model
             gc.collect()
-            return score
     
     def train(self, data: ModelDataset) -> None:
         # Remove rows with missing target values
         train_mask = data.train_target.notna()
-
+        
         train_data_clean = data.train[train_mask]
         train_target_clean = data.train_target[train_mask]
+        
+        test_mask = data.test_target.notna()
+        test_data_clean = data.test[test_mask]
+        test_target_clean = data.test_target[test_mask]
         
         # Specify the SQLite database file
         storage = "sqlite:///optuna_studies.db"
     
         study = optuna.create_study(direction="maximize", storage=storage, study_name="random_forest_optimization", load_if_exists=True)
-        study.optimize(lambda trial: self.__objective(trial, train_data_clean, train_target_clean), n_trials=50, gc_after_trial=True, show_progress_bar=True)
+        study.optimize(lambda trial: self.__objective(trial, train_data_clean, train_target_clean,test_data_clean, test_target_clean), n_trials=50, gc_after_trial=True)
         
         logger.info(f"Best hyperparameters: {study.best_params}")
         

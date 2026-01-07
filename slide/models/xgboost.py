@@ -3,8 +3,9 @@
 import numpy as np
 from slide.logger import Logger
 from slide.models import BaseModel, ModelDataset
-from sklearn.model_selection import cross_val_score
+from sklearn.metrics import accuracy_score
 from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.preprocessing import LabelEncoder
 import json
 import pickle
 import xgboost as xgb
@@ -18,44 +19,63 @@ class XGBoost(BaseModel):
     def __init__(self):
         super().__init__()
 
-    def __objective(self, trial: optuna.Trial, X_train, y_train):
+    def __objective(self, trial: optuna.Trial, X_train, y_train, x_test, y_test):
         logger.info(f"Starting trial {trial.number} for hyperparameter optimization.")
 
         params = {
-            "max_depth": trial.suggest_categorical("max_depth", [6, 8, 10]),
-            "learning_rate": trial.suggest_categorical("learning_rate", [0.05, 0.1, 0.2]),
-            "n_estimators": trial.suggest_categorical("n_estimators", [100, 200, 300]),
+            "n_estimators": trial.suggest_categorical("n_estimators", [100, 200, 300, 500]),
             "subsample": trial.suggest_categorical("subsample", [0.7, 0.8, 0.9]),
             "colsample_bytree": trial.suggest_categorical("colsample_bytree", [0.7, 0.8, 0.9]),
         }
 
-        model = xgb.XGBClassifier(
-            **params,
-            random_state=42,
-            tree_method="hist",
-            missing=np.nan,
-            n_jobs=20,  # avoid nested parallelism / memory blowups
-            eval_metric="mlogloss",
-        )
-
         try:
-            score = cross_val_score(
-                model,
-                X_train,
-                y_train,
-                cv=3,
-                scoring="accuracy",
-                n_jobs=1,
-            ).mean()
+            model = xgb.XGBClassifier(
+                **params,
+                random_state=42,
+                learning_rate=0.001,
+                tree_method="hist",
+                missing=np.nan,
+                n_jobs=25,  # avoid nested parallelism / memory blowups
+                eval_metric="mlogloss",
+                verbose=1
+            )
+            
+            logger.info(f"Training the model")
+            model.fit(X_train, y_train)
+            
+            logger.info("Calculating training vs test accuracy")
+            # Make predictions
+            train_predictions = model.predict(X_train)
+            test_predictions = model.predict(x_test)
+
+            # Calculate accuracies
+            train_accuracy = accuracy_score(y_train, train_predictions)
+            test_accuracy = accuracy_score(y_test, test_predictions)
+        
+            trial.set_user_attr("train_accuracy", float(train_accuracy))
+            trial.set_user_attr("test_accuracy", float(test_accuracy))
+            
+            report = classification_report(y_test, test_predictions, output_dict=True)
+            trial.set_user_attr("classification_report", report)
+            # Evaluate the model using cross-validation
+            return float(test_accuracy)
         finally:
             del model
             gc.collect()
-            return score
 
     def train(self, data: ModelDataset) -> None:
         train_mask = data.train_target.notna()
+        
         train_data_clean = data.train[train_mask]
         train_target_clean = data.train_target[train_mask]
+        
+        test_mask = data.test_target.notna()
+        test_data_clean = data.test[test_mask]
+        test_target_clean = data.test_target[test_mask]
+        
+        label_encoder = LabelEncoder()
+        train_target_encoded = label_encoder.fit_transform(train_target_clean)
+        test_target_encoded = label_encoder.transform(test_target_clean)
 
         storage = "sqlite:///optuna_studies.db"
 
@@ -67,10 +87,9 @@ class XGBoost(BaseModel):
         )
 
         study.optimize(
-            lambda trial: self.__objective(trial, train_data_clean, train_target_clean),
+            lambda trial: self.__objective(trial, train_data_clean, train_target_encoded, test_data_clean, test_target_encoded),
             n_trials=50,
             gc_after_trial=True,
-            show_progress_bar=True,
         )
 
         logger.info(f"Best hyperparameters: {study.best_params}")
