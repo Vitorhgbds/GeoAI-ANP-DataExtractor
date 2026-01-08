@@ -3,8 +3,7 @@
 from sklearn.metrics import accuracy_score
 from slide.logger import Logger
 from slide.models import BaseModel, ModelDataset
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import cross_val_score
+from sklearn.tree import DecisionTreeClassifier
 from sklearn.metrics import classification_report, confusion_matrix
 import json
 import pickle
@@ -23,20 +22,15 @@ class RandomForest(BaseModel):
         
         # Suggest hyperparameters
         params = {
-            "n_estimators": trial.suggest_categorical("n_estimators", [200, 300, 400, 500]),
             "min_samples_split": trial.suggest_int("min_samples_split", 2, 18, step=4),
-            "min_samples_leaf": trial.suggest_int("min_samples_leaf", 2, 10, step=2),
-            "max_features": trial.suggest_categorical("max_features", ["sqrt", "log2", 0.5])
+            "min_samples_leaf": trial.suggest_int("min_samples_leaf", 2, 10, step=2)
         }
         
         try:
             # Create the model with suggested hyperparameters
-            model = RandomForestClassifier(
+            model = DecisionTreeClassifier(
                 **params,
-                max_samples=0.8,
-                random_state=42,
-                n_jobs=25,
-                bootstrap=True
+                random_state=42
             )
             
             logger.info(f"Training the model")
@@ -76,8 +70,8 @@ class RandomForest(BaseModel):
         # Specify the SQLite database file
         storage = "sqlite:///optuna_studies.db"
     
-        study = optuna.create_study(direction="maximize", storage=storage, study_name="random_forest_optimization", load_if_exists=True)
-        study.optimize(lambda trial: self.__objective(trial, train_data_clean, train_target_clean,test_data_clean, test_target_clean), n_trials=15, gc_after_trial=True)
+        study = optuna.create_study(direction="maximize", storage=storage, study_name="DecisionTreeOptimization", load_if_exists=True)
+        study.optimize(lambda trial: self.__objective(trial, train_data_clean, train_target_clean,test_data_clean, test_target_clean), n_trials=20, gc_after_trial=True)
         
         logger.info(f"Best hyperparameters: {study.best_params}")
         

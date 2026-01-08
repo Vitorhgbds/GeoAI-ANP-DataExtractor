@@ -1,10 +1,10 @@
 
 
+from sklearn.impute import SimpleImputer
+from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
 from slide.logger import Logger
 from slide.models import BaseModel, ModelDataset
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import cross_val_score
 from sklearn.metrics import classification_report, confusion_matrix
 import json
 import pickle
@@ -23,20 +23,18 @@ class RandomForest(BaseModel):
         
         # Suggest hyperparameters
         params = {
-            "n_estimators": trial.suggest_categorical("n_estimators", [200, 300, 400, 500]),
-            "min_samples_split": trial.suggest_int("min_samples_split", 2, 18, step=4),
-            "min_samples_leaf": trial.suggest_int("min_samples_leaf", 2, 10, step=2),
-            "max_features": trial.suggest_categorical("max_features", ["sqrt", "log2", 0.5])
+            "max_iter": trial.suggest_categorical("max_iter", [100, 200, 300, 400, 500]),
+            "C": trial.suggest_float("C", 0.01, 10.0, log=True)
+            
         }
         
         try:
             # Create the model with suggested hyperparameters
-            model = RandomForestClassifier(
+            model = LogisticRegression(
                 **params,
-                max_samples=0.8,
+                verbose=1,
                 random_state=42,
-                n_jobs=25,
-                bootstrap=True
+                n_jobs=25
             )
             
             logger.info(f"Training the model")
@@ -73,11 +71,16 @@ class RandomForest(BaseModel):
         test_data_clean = data.test[test_mask]
         test_target_clean = data.test_target[test_mask]
         
+        # Impute missing values (KNN requires no missing values)
+        self.imputer = SimpleImputer(strategy='median')
+        train_data_imputed = self.imputer.fit_transform(train_data_clean)
+        test_data_imputed = self.imputer.transform(test_data_clean)
+        
         # Specify the SQLite database file
         storage = "sqlite:///optuna_studies.db"
     
-        study = optuna.create_study(direction="maximize", storage=storage, study_name="random_forest_optimization", load_if_exists=True)
-        study.optimize(lambda trial: self.__objective(trial, train_data_clean, train_target_clean,test_data_clean, test_target_clean), n_trials=15, gc_after_trial=True)
+        study = optuna.create_study(direction="maximize", storage=storage, study_name="LogisticRegressionOptimization", load_if_exists=True)
+        study.optimize(lambda trial: self.__objective(trial, train_data_clean, train_target_clean,test_data_clean, test_target_clean), n_trials=20, gc_after_trial=True)
         
         logger.info(f"Best hyperparameters: {study.best_params}")
         
