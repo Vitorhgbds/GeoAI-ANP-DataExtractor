@@ -80,7 +80,7 @@ class LogisticRegression(BaseModel):
         storage = "sqlite:///optuna_studies.db"
     
         study = optuna.create_study(direction="maximize", storage=storage, study_name="LogisticRegressionOptimization", load_if_exists=True)
-        study.optimize(lambda trial: self.__objective(trial, train_data_clean, train_target_clean,test_data_clean, test_target_clean), n_trials=20, gc_after_trial=True)
+        study.optimize(lambda trial: self.__objective(trial, train_data_imputed, train_target_clean, test_data_imputed, test_target_clean), n_trials=20, gc_after_trial=True)
         
         logger.info(f"Best hyperparameters: {study.best_params}")
         
