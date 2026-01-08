@@ -1,7 +1,7 @@
 
 
 from sklearn.impute import SimpleImputer
-from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import LogisticRegression as LogisticRegressionClassifier
 from sklearn.metrics import accuracy_score
 from slide.logger import Logger
 from slide.models import BaseModel, ModelDataset
@@ -30,7 +30,7 @@ class LogisticRegression(BaseModel):
         
         try:
             # Create the model with suggested hyperparameters
-            model = LogisticRegression(
+            model = LogisticRegressionClassifier(
                 **params,
                 verbose=1,
                 random_state=42,
