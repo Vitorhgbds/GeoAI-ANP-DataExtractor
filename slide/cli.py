@@ -13,6 +13,8 @@ from slide.models.forest import RandomForest
 from slide.models.xgboost import XGBoost
 from slide.models.knn import KNN
 from slide.models.lstm import LSTM
+from slide.models.tree import DecisionTree
+from slide.models.logistic import LogisticRegression
 from slide.features.agpExtractionPolicy import Lithology, Summary
 from slide.features.featureExtractorEngine import FeatureExtractorEngine
 from slide.features.logExtractionPolicy import LogChannelsExtractionPolicy, LogExtractionPolicy
@@ -108,6 +110,18 @@ def train_knn_model(*args, **kwargs):
 def train_lstm_model(*args, **kwargs):
     policy = DefaultFeatures()
     model = LSTM()
+    engine = ModelEngine(policy=policy, model=model)
+    engine.build()
+    
+def train_tree_model(*args, **kwargs):
+    policy = SequentialFeatures()
+    model = DecisionTree()
+    engine = ModelEngine(policy=policy, model=model)
+    engine.build()
+    
+def train_logistic_model(*args, **kwargs):
+    policy = SequentialFeatures()
+    model = LogisticRegression()
     engine = ModelEngine(policy=policy, model=model)
     engine.build()
 
@@ -217,6 +231,16 @@ def make_train_subparsers() -> dict:
         "help": "Train an LSTM model using the feature dataset",
         "description": "Create a model training engine to train an LSTM model using the feature dataset.",
         "func": train_lstm_model,
+    }
+    train_subparsers["decision-tree"] = {
+        "help": "Train a Decision Tree model using the feature dataset",
+        "description": "Create a model training engine to train a Decision Tree model using the feature dataset.",
+        "func": train_tree_model,
+    }
+    train_subparsers["logistic-regression"] = {
+        "help": "Train a Logistic Regression model using the feature dataset",
+        "description": "Create a model training engine to train a Logistic Regression model using the feature dataset.",
+        "func": train_logistic_model,
     }
     return train_subparsers
 

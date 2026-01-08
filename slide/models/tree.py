@@ -13,7 +13,7 @@ import gc
 logging = Logger()
 logger = logging.get_logger()
 
-class RandomForest(BaseModel):
+class DecisionTree(BaseModel):
     def __init__(self):
         super().__init__()
         
