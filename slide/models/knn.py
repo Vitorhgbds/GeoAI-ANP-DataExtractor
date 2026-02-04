@@ -1,129 +1,269 @@
-
-
-from sklearn.metrics import accuracy_score
+from sklearn.impute import SimpleImputer
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, f1_score
 from slide.logger import Logger
 from slide.models import BaseModel, ModelDataset
-from sklearn.metrics import classification_report, confusion_matrix
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.impute import SimpleImputer
-import json
 import pickle
-import optuna
 import gc
 
 logging = Logger()
 logger = logging.get_logger()
 
-class KNN(BaseModel):
-    def __init__(self):
-        super().__init__()
-        self.imputer = None
 
-    def __objective(self, trial: optuna.Trial, X_train, y_train, x_test, y_test):
-        logger.info(f"Starting trial {trial.number} for hyperparameter optimization.")
+class KNN(BaseModel):
+    def __init__(
+        self,
+        n_neighbors: int | None = None,
+        weights: str | None = None,
+        p: int | None = None,
+        algorithm: str | None = None,
+        metric: str = "minkowski",
+        n_jobs: int = -1,
+        *args, **kwargs):
+        """
+        Initialize KNN model with fixed parameters.
         
-        # Suggest hyperparameters
-        params = {
-        "n_neighbors": trial.suggest_int("n_neighbors", 3, 15, step=2),
-        "weights": trial.suggest_categorical("weights", ["uniform", "distance"]),
-        "p": trial.suggest_int("p", 1, 2),  # Only relevant for Minkowski metric
-        "algorithm": trial.suggest_categorical("algorithm", ["auto", "ball_tree", "kd_tree"])
-        }
-        # Create the model with suggested hyperparameters
-        model = KNeighborsClassifier(
-            **params,
-            metric="minkowski",
-            n_jobs=25
+        Args:
+            n_neighbors: Number of neighbors to consider
+            weights: Weight function ('uniform' or 'distance')
+            p: Power parameter for Minkowski metric (1=Manhattan, 2=Euclidean)
+            algorithm: Algorithm to compute nearest neighbors ('auto', 'ball_tree', 'kd_tree')
+            metric: Distance metric to use
+            n_jobs: Number of CPU cores to use (-1 = all cores)
+        """
+        super().__init__()
+        self.n_neighbors = n_neighbors
+        self.weights = weights
+        self.p = p
+        self.algorithm = algorithm
+        self.metric = metric
+        self.n_jobs = n_jobs
+        self.model = None
+        self.imputer = None
+        self.label_encoder_mapping = None
+        logger.info(
+            f"Initialized KNN with n_neighbors={n_neighbors}, weights={weights}, p={p}"
         )
-        try:
-            logger.info(f"Starting training KNN with params: {params}")
-            model.fit(X_train, y_train)
-            
-            logger.info("Calculating training vs test accuracy")
-            # Make predictions
-            train_predictions = model.predict(X_train)
-            test_predictions = model.predict(x_test)
-            
-            # Calculate accuracies
-            train_accuracy = accuracy_score(y_train, train_predictions)
-            test_accuracy = accuracy_score(y_test, test_predictions)
-        
-            trial.set_user_attr("train_accuracy", float(train_accuracy))
-            trial.set_user_attr("test_accuracy", float(test_accuracy))
-            
-            report = classification_report(y_test, test_predictions, output_dict=True)
-            trial.set_user_attr("classification_report", report)
-            # Evaluate the model using cross-validation
-            return float(test_accuracy)
-        finally:
-            del model
-            gc.collect()
 
     def train(self, data: ModelDataset) -> None:
+        """
+        Train KNN model on data.
+        
+        Args:
+            data: ModelDataset with train/test features and targets
+        """
+        logger.info("Training KNN model...")
+        
         # Remove rows with missing target values
         train_mask = data.train_target.notna()
-        test_mask = data.test_target.notna()
-
         train_data_clean = data.train[train_mask]
         train_target_clean = data.train_target[train_mask]
-        test_data_clean = data.test[test_mask]
-        test_target_clean = data.test_target[test_mask]
         
         # Impute missing values (KNN requires no missing values)
         self.imputer = SimpleImputer(strategy='median')
         train_data_imputed = self.imputer.fit_transform(train_data_clean)
-        test_data_imputed = self.imputer.transform(test_data_clean)
         
-        # Specify the SQLite database file
-        storage = "sqlite:///optuna_studies.db"
+        # Create label encoding for non-numeric targets
+        if train_target_clean.dtype == 'object':
+            unique_labels = sorted(train_target_clean.unique())
+            self.label_encoder_mapping = {label: idx for idx, label in enumerate(unique_labels)}
+            train_target_encoded = train_target_clean.map(self.label_encoder_mapping)
+        else:
+            train_target_encoded = train_target_clean
         
-        # Create or load an Optuna study
-        study = optuna.create_study(direction="maximize", storage=storage, study_name="knn_optimization", load_if_exists=True)
-        study.optimize(lambda trial: self.__objective(trial, train_data_imputed, train_target_clean, test_data_imputed, test_target_clean), n_trials=50, gc_after_trial=True)
+        logger.debug(f"Train data shape: {train_data_imputed.shape}")
+        logger.debug(f"Train target shape: {train_target_encoded.shape}")
         
-        logger.info(f"Best hyperparameters: {study.best_params}")
+        # Train model
+        self.model = KNeighborsClassifier(
+            n_neighbors=self.n_neighbors,
+            weights=self.weights,
+            p=self.p,
+            algorithm=self.algorithm,
+            metric=self.metric,
+            n_jobs=self.n_jobs
+        )
         
+        self.model.fit(train_data_imputed, train_target_encoded)
         
-    
-    def predict(self, input_data: list) -> list:
-        pass
-        #X = input_data.features
-        #return self.model.predict(X).tolist()
-    
+        # Evaluate on training data
+        train_preds = self.model.predict(train_data_imputed)
+        train_acc = accuracy_score(train_target_encoded, train_preds)
+        train_f1 = f1_score(train_target_encoded, train_preds, average='macro', zero_division=0)
+        
+        logger.info(f"Training Accuracy: {train_acc:.4f}")
+        logger.info(f"Training F1 (macro): {train_f1:.4f}")
+        
+        # Evaluate on test data if available
+        test_mask = data.test_target.notna()
+        if test_mask.sum() > 0:
+            test_data_clean = data.test[test_mask]
+            test_target_clean = data.test_target[test_mask]
+            
+            test_data_imputed = self.imputer.transform(test_data_clean)
+            
+            if self.label_encoder_mapping:
+                test_target_encoded = test_target_clean.map(self.label_encoder_mapping)
+            else:
+                test_target_encoded = test_target_clean
+            
+            test_preds = self.model.predict(test_data_imputed)
+            test_acc = accuracy_score(test_target_encoded, test_preds)
+            test_f1 = f1_score(test_target_encoded, test_preds, average='macro', zero_division=0)
+            
+            logger.info(f"Test Accuracy: {test_acc:.4f}")
+            logger.info(f"Test F1 (macro): {test_f1:.4f}")
+        
+        logger.info("Training complete!")
+
+    def predict(self, input_data) -> list:
+        """
+        Predict labels for input data.
+        
+        Args:
+            input_data: DataFrame with same features as training data
+            
+        Returns:
+            List of predicted labels
+        """
+        if self.model is None:
+            raise ValueError("Model not trained. Call train() first or load a trained model.")
+        
+        if self.imputer is None:
+            raise ValueError("Imputer not fitted. Call train() first or load a trained model.")
+        
+        # Impute missing values
+        data_imputed = self.imputer.transform(input_data)
+        
+        # Make predictions
+        predictions_encoded = self.model.predict(data_imputed)
+        
+        # Decode labels if needed
+        if self.label_encoder_mapping:
+            reverse_mapping = {v: k for k, v in self.label_encoder_mapping.items()}
+            predictions = [reverse_mapping[pred] for pred in predictions_encoded]
+        else:
+            predictions = predictions_encoded.tolist()
+        
+        return predictions
+
     def evaluate(self, data: ModelDataset) -> dict:
+        """
+        Evaluate model on test data.
+        
+        Args:
+            data: ModelDataset with test features and targets
+            
+        Returns:
+            Dictionary with evaluation metrics
+        """
+        if self.model is None:
+            raise ValueError("Model not trained. Call train() first or load a trained model.")
+        
+        if self.imputer is None:
+            raise ValueError("Imputer not fitted. Call train() first or load a trained model.")
+        
         # Remove rows with missing target values
         test_mask = data.test_target.notna()
-
         test_data_clean = data.test[test_mask]
         test_target_clean = data.test_target[test_mask]
         
-        # Impute missing values using the fitted imputer
+        logger.debug(f"Test data shape: {data.test.shape}")
+        logger.debug(f"Test target shape: {data.test_target.shape}")
+        
+        # Impute missing values
         test_data_imputed = self.imputer.transform(test_data_clean)
         
-        accuracy = self.model.score(test_data_imputed, test_target_clean)
-
-        predictions = self.model.predict(test_data_imputed)
-        self.results = {
-            "accuracy": accuracy,
-            "classification_report": classification_report(test_target_clean, predictions),
-            "confusion_matrix": confusion_matrix(test_target_clean, predictions)
+        # Encode targets if needed
+        if self.label_encoder_mapping:
+            test_target_encoded = test_target_clean.map(self.label_encoder_mapping)
+        else:
+            test_target_encoded = test_target_clean
+        
+        # Make predictions
+        predictions_encoded = self.model.predict(test_data_imputed)
+        
+        # Decode predictions for reporting
+        if self.label_encoder_mapping:
+            reverse_mapping = {v: k for k, v in self.label_encoder_mapping.items()}
+            predictions_decoded = [reverse_mapping[pred] for pred in predictions_encoded]
+            targets_decoded = [reverse_mapping[target] for target in test_target_encoded]
+        else:
+            predictions_decoded = predictions_encoded
+            targets_decoded = test_target_encoded
+        
+        # Calculate metrics
+        accuracy = accuracy_score(test_target_encoded, predictions_encoded)
+        f1 = f1_score(test_target_encoded, predictions_encoded, average='macro', zero_division=0)
+        f1_weighted = f1_score(test_target_encoded, predictions_encoded, average='weighted', zero_division=0)
+        report = classification_report(targets_decoded, predictions_decoded, output_dict=True)
+        cm = confusion_matrix(test_target_encoded, predictions_encoded)
+        
+        results = {
+            "accuracy": float(accuracy),
+            "f1_macro": float(f1),
+            "f1_weighted": float(f1_weighted),
+            "classification_report": report,
+            "confusion_matrix": cm.tolist()
         }
-        logger.info(f"Evaluation results: {json.dumps(self.results, indent=4)}")
-        return self.results
-    
-    def save(self, file_path: str) -> None:
-        if self.model is not None and self.imputer is not None:
-            # Save both model and imputer
-            model_data = {
-                'model': self.model,
-                'imputer': self.imputer
+        
+        logger.info(f"Test Accuracy: {accuracy:.4f}")
+        logger.info(f"Test F1 (macro): {f1:.4f}")
+        logger.info(f"Classification Report:\n{classification_report(targets_decoded, predictions_decoded)}")
+        logger.info(f"Test F1 (weighted): {f1_weighted:.4f}")
+        return results
+
+    def save(self, file_path: str = "knn_model.pkl") -> None:
+        """
+        Save trained model, imputer, and label encoder to disk.
+        
+        Args:
+            file_path: Path where to save the model
+        """
+        if self.model is None:
+            raise ValueError("No model to save. Train the model first.")
+        
+        model_data = {
+            "model": self.model,
+            "imputer": self.imputer,
+            "label_encoder_mapping": self.label_encoder_mapping,
+            "hyperparameters": {
+                "n_neighbors": self.n_neighbors,
+                "weights": self.weights,
+                "p": self.p,
+                "algorithm": self.algorithm,
+                "metric": self.metric,
+                "n_jobs": self.n_jobs
             }
-            with open(file_path, 'wb') as f:
-                pickle.dump(model_data, f)
-            logger.info(f"Model and imputer saved to {file_path}")
-            
-        if self.results is not None:
-            results_path = file_path + "_results_knn.json"
-            with open(results_path, 'w') as f:
-                json.dump(self.results, f, indent=4)
-            logger.info(f"Results saved to {results_path}")
+        }
+        
+        with open(file_path, 'wb') as f:
+            pickle.dump(model_data, f)
+        
+        logger.info(f"Model saved to {file_path}")
+
+    def load(self, file_path: str = "knn_model.pkl") -> None:
+        """
+        Load a trained model from disk.
+        
+        Args:
+            file_path: Path to the saved model
+        """
+        with open(file_path, 'rb') as f:
+            model_data = pickle.load(f)
+        
+        # Restore model and preprocessors
+        self.model = model_data["model"]
+        self.imputer = model_data["imputer"]
+        self.label_encoder_mapping = model_data["label_encoder_mapping"]
+        
+        # Restore hyperparameters
+        hparams = model_data["hyperparameters"]
+        self.n_neighbors = hparams["n_neighbors"]
+        self.weights = hparams["weights"]
+        self.p = hparams["p"]
+        self.algorithm = hparams["algorithm"]
+        self.metric = hparams["metric"]
+        self.n_jobs = hparams["n_jobs"]
+        
+        logger.info(f"Model loaded from {file_path}")

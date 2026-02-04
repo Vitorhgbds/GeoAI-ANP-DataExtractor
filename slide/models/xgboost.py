@@ -1,133 +1,281 @@
-
-
 import numpy as np
+from sklearn.impute import SimpleImputer
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, f1_score
+from sklearn.preprocessing import LabelEncoder
 from slide.logger import Logger
 from slide.models import BaseModel, ModelDataset
-from sklearn.metrics import accuracy_score
-from sklearn.metrics import classification_report, confusion_matrix
-from sklearn.preprocessing import LabelEncoder
-import json
 import pickle
 import xgboost as xgb
-import optuna
 import gc
 
 logging = Logger()
 logger = logging.get_logger()
 
+
 class XGBoost(BaseModel):
-    def __init__(self):
-        super().__init__()
-
-    def __objective(self, trial: optuna.Trial, X_train, y_train, x_test, y_test):
-        logger.info(f"Starting trial {trial.number} for hyperparameter optimization.")
-
-        params = {
-            "n_estimators": trial.suggest_categorical("n_estimators", [100, 200, 300, 500]),
-            "subsample": trial.suggest_categorical("subsample", [0.7, 0.8, 0.9]),
-            "colsample_bytree": trial.suggest_categorical("colsample_bytree", [0.7, 0.8, 0.9]),
-        }
-
-        try:
-            model = xgb.XGBClassifier(
-                **params,
-                random_state=42,
-                learning_rate=0.001,
-                tree_method="hist",
-                missing=np.nan,
-                n_jobs=25,  # avoid nested parallelism / memory blowups
-                eval_metric="mlogloss",
-                verbose=1
-            )
-            
-            logger.info(f"Training the model")
-            model.fit(X_train, y_train)
-            
-            logger.info("Calculating training vs test accuracy")
-            # Make predictions
-            train_predictions = model.predict(X_train)
-            test_predictions = model.predict(x_test)
-
-            # Calculate accuracies
-            train_accuracy = accuracy_score(y_train, train_predictions)
-            test_accuracy = accuracy_score(y_test, test_predictions)
+    def __init__(
+        self,
+        n_estimators: int | None = None,
+        subsample: float | None = None,
+        colsample_bytree: float | None = None,
+        tree_method: str = "hist",
+        eval_metric: str = "mlogloss",
+        learning_rate: float | None = 0.0001,
+        max_depth: int | None = None,
+        min_child_weight: int | None = None,
+        random_state: int = 42,
+        n_jobs: int = -1,
+        *args, **kwargs):
+        """
+        Initialize XGBoost model with fixed parameters.
         
-            trial.set_user_attr("train_accuracy", float(train_accuracy))
-            trial.set_user_attr("test_accuracy", float(test_accuracy))
-            
-            report = classification_report(y_test, test_predictions, output_dict=True)
-            trial.set_user_attr("classification_report", report)
-            # Evaluate the model using cross-validation
-            return float(test_accuracy)
-        finally:
-            del model
-            gc.collect()
+        Args:
+            n_estimators: Number of boosting rounds
+            subsample: Fraction of samples used for fitting each tree
+            colsample_bytree: Fraction of features used for fitting each tree
+            learning_rate: Learning rate (eta)
+            max_depth: Maximum depth of trees
+            min_child_weight: Minimum sum of instance weight in a child
+            random_state: Random seed for reproducibility
+            n_jobs: Number of CPU cores to use (-1 = all cores)
+        """
+        super().__init__()
+        self.n_estimators = n_estimators
+        self.subsample = subsample
+        self.colsample_bytree = colsample_bytree
+        self.learning_rate = learning_rate
+        self.max_depth = max_depth
+        self.tree_method = tree_method
+        self.eval_metric = eval_metric
+        self.min_child_weight = min_child_weight
+        self.random_state = random_state
+        self.n_jobs = n_jobs
+        self.model = None
+        self.imputer = None
+        self.label_encoder = None
+        logger.info(
+            f"Initialized XGBoost with n_estimators={n_estimators}, "
+            f"learning_rate={learning_rate}, max_depth={max_depth}"
+        )
 
     def train(self, data: ModelDataset) -> None:
-        train_mask = data.train_target.notna()
+        """
+        Train XGBoost model on data.
         
+        Args:
+            data: ModelDataset with train/test features and targets
+        """
+        logger.info("Training XGBoost model...")
+        
+        # Remove rows with missing target values
+        train_mask = data.train_target.notna()
         train_data_clean = data.train[train_mask]
         train_target_clean = data.train_target[train_mask]
         
+        # Impute missing values
+        self.imputer = SimpleImputer(strategy='median')
+        train_data_imputed = self.imputer.fit_transform(train_data_clean)
+        
+        # Encode targets
+        self.label_encoder = LabelEncoder()
+        train_target_encoded = self.label_encoder.fit_transform(train_target_clean)
+        
+        logger.debug(f"Train data shape: {train_data_imputed.shape}")
+        logger.debug(f"Train target shape: {train_target_encoded.shape}")
+        logger.debug(f"Classes: {self.label_encoder.classes_}")
+        
+        # Train model
+        self.model = xgb.XGBClassifier(
+            n_estimators=self.n_estimators,
+            subsample=self.subsample,
+            colsample_bytree=self.colsample_bytree,
+            learning_rate=self.learning_rate,
+            max_depth=self.max_depth,
+            min_child_weight=self.min_child_weight,
+            random_state=self.random_state,
+            n_jobs=self.n_jobs,
+            tree_method=self.tree_method,
+            eval_metric=self.eval_metric,
+            verbose=2
+        )
+        
+        self.model.fit(train_data_imputed, train_target_encoded)
+        
+        # Evaluate on training data
+        train_preds = self.model.predict(train_data_imputed)
+        train_acc = accuracy_score(train_target_encoded, train_preds)
+        train_f1 = f1_score(train_target_encoded, train_preds, average='macro', zero_division=0)
+        
+        logger.info(f"Training Accuracy: {train_acc:.4f}")
+        logger.info(f"Training F1 (macro): {train_f1:.4f}")
+        
+        # Evaluate on test data if available
         test_mask = data.test_target.notna()
-        test_data_clean = data.test[test_mask]
-        test_target_clean = data.test_target[test_mask]
+        if test_mask.sum() > 0:
+            test_data_clean = data.test[test_mask]
+            test_target_clean = data.test_target[test_mask]
+            
+            test_data_imputed = self.imputer.transform(test_data_clean)
+            test_target_encoded = self.label_encoder.transform(test_target_clean)
+            
+            test_preds = self.model.predict(test_data_imputed)
+            test_acc = accuracy_score(test_target_encoded, test_preds)
+            test_f1 = f1_score(test_target_encoded, test_preds, average='macro', zero_division=0)
+            
+            logger.info(f"Test Accuracy: {test_acc:.4f}")
+            logger.info(f"Test F1 (macro): {test_f1:.4f}")
         
-        label_encoder = LabelEncoder()
-        train_target_encoded = label_encoder.fit_transform(train_target_clean)
-        test_target_encoded = label_encoder.transform(test_target_clean)
+        logger.info("Training complete!")
 
-        storage = "sqlite:///optuna_studies.db"
-
-        study = optuna.create_study(
-            direction="maximize",
-            storage=storage,
-            study_name="xgboost_optimization",
-            load_if_exists=True,
-        )
-
-        study.optimize(
-            lambda trial: self.__objective(trial, train_data_clean, train_target_encoded, test_data_clean, test_target_encoded),
-            n_trials=50,
-            gc_after_trial=True,
-        )
-
-        logger.info(f"Best hyperparameters: {study.best_params}")
-
+    def predict(self, input_data) -> list:
+        """
+        Predict labels for input data.
         
-    
-    def predict(self, input_data: list) -> list:
-        pass
-        #X = input_data.features
-        #return self.model.predict(X).tolist()
-    
+        Args:
+            input_data: DataFrame with same features as training data
+            
+        Returns:
+            List of predicted labels (decoded)
+        """
+        if self.model is None:
+            raise ValueError("Model not trained. Call train() first or load a trained model.")
+        
+        if self.imputer is None:
+            raise ValueError("Imputer not fitted. Call train() first or load a trained model.")
+        
+        if self.label_encoder is None:
+            raise ValueError("Label encoder not fitted. Call train() first or load a trained model.")
+        
+        # Impute missing values
+        data_imputed = self.imputer.transform(input_data)
+        
+        # Make predictions (encoded)
+        predictions_encoded = self.model.predict(data_imputed)
+        
+        # Decode labels
+        predictions = self.label_encoder.inverse_transform(predictions_encoded)
+        
+        return predictions.tolist()
+
     def evaluate(self, data: ModelDataset) -> dict:
+        """
+        Evaluate model on test data.
+        
+        Args:
+            data: ModelDataset with test features and targets
+            
+        Returns:
+            Dictionary with evaluation metrics
+        """
+        if self.model is None:
+            raise ValueError("Model not trained. Call train() first or load a trained model.")
+        
+        if self.imputer is None:
+            raise ValueError("Imputer not fitted. Call train() first or load a trained model.")
+        
+        if self.label_encoder is None:
+            raise ValueError("Label encoder not fitted. Call train() first or load a trained model.")
+        
         # Remove rows with missing target values
         test_mask = data.test_target.notna()
-
         test_data_clean = data.test[test_mask]
         test_target_clean = data.test_target[test_mask]
         
-        accuracy = self.model.score(test_data_clean, test_target_clean)
-
-        predictions = self.model.predict(test_data_clean)
-        self.results = {
-            "accuracy": accuracy,
-            "classification_report": classification_report(test_target_clean, predictions),
-            "confusion_matrix": confusion_matrix(test_target_clean, predictions),
-            "feature_importances": self.model.feature_importances_.tolist()
+        # Impute missing values
+        test_data_imputed = self.imputer.transform(test_data_clean)
+        
+        # Encode targets
+        test_target_encoded = self.label_encoder.transform(test_target_clean)
+        
+        logger.debug(f"Test data shape: {data.test.shape}")
+        logger.debug(f"Test target shape: {data.test_target.shape}")
+        # Make predictions
+        predictions_encoded = self.model.predict(test_data_imputed)
+        
+        # Decode for reporting
+        predictions_decoded = self.label_encoder.inverse_transform(predictions_encoded)
+        targets_decoded = self.label_encoder.inverse_transform(test_target_encoded)
+        
+        # Calculate metrics
+        accuracy = accuracy_score(test_target_encoded, predictions_encoded)
+        f1 = f1_score(test_target_encoded, predictions_encoded, average='macro', zero_division=0)
+        f1_weighted = f1_score(test_target_encoded, predictions_encoded, average='weighted', zero_division=0)
+        report = classification_report(targets_decoded, predictions_decoded, output_dict=True)
+        cm = confusion_matrix(test_target_encoded, predictions_encoded)
+        
+        # Get feature importances
+        feature_importances = self.model.feature_importances_.tolist()
+        
+        results = {
+            "accuracy": float(accuracy),
+            "f1_macro": float(f1),
+            "f1_weighted": float(f1_weighted),
+            "classification_report": report,
+            "confusion_matrix": cm.tolist(),
+            "feature_importances": feature_importances
         }
-        logger.info(f"Evaluation results: {json.dumps(self.results, indent=4)}")
-        return self.results
-    
-    def save(self, file_path: str) -> None:
-        if self.model is not None:
-            with open(file_path, 'wb') as f:
-                pickle.dump(self.model, f)
-            logger.info(f"Model saved to {file_path}")
-            
-        if self.results is not None:
-            results_path = file_path + "_results_xgboost.json"
-            with open(results_path, 'w') as f:
-                json.dump(self.results, f, indent=4)
-            logger.info(f"Results saved to {results_path}")
+        
+        logger.info(f"Test Accuracy: {accuracy:.4f}")
+        logger.info(f"Test F1 (macro): {f1:.4f}")
+        logger.info(f"Test F1 (weighted): {f1_weighted:.4f}")
+        logger.debug(f"Feature Importances: {feature_importances}")
+        return results
+
+    def save(self, file_path: str = "xgboost_model.pkl") -> None:
+        """
+        Save trained model, imputer, and label encoder to disk.
+        
+        Args:
+            file_path: Path where to save the model
+        """
+        if self.model is None:
+            raise ValueError("No model to save. Train the model first.")
+        
+        model_data = {
+            "model": self.model,
+            "imputer": self.imputer,
+            "label_encoder": self.label_encoder,
+            "hyperparameters": {
+                "n_estimators": self.n_estimators,
+                "subsample": self.subsample,
+                "colsample_bytree": self.colsample_bytree,
+                "learning_rate": self.learning_rate,
+                "max_depth": self.max_depth,
+                "min_child_weight": self.min_child_weight,
+                "random_state": self.random_state,
+                "n_jobs": self.n_jobs
+            }
+        }
+        
+        with open(file_path, 'wb') as f:
+            pickle.dump(model_data, f)
+        
+        logger.info(f"Model saved to {file_path}")
+
+    def load(self, file_path: str = "xgboost_model.pkl") -> None:
+        """
+        Load a trained model from disk.
+        
+        Args:
+            file_path: Path to the saved model
+        """
+        with open(file_path, 'rb') as f:
+            model_data = pickle.load(f)
+        
+        # Restore model and preprocessors
+        self.model = model_data["model"]
+        self.imputer = model_data["imputer"]
+        self.label_encoder = model_data["label_encoder"]
+        
+        # Restore hyperparameters
+        hparams = model_data["hyperparameters"]
+        self.n_estimators = hparams["n_estimators"]
+        self.subsample = hparams["subsample"]
+        self.colsample_bytree = hparams["colsample_bytree"]
+        self.learning_rate = hparams["learning_rate"]
+        self.max_depth = hparams["max_depth"]
+        self.min_child_weight = hparams["min_child_weight"]
+        self.random_state = hparams["random_state"]
+        self.n_jobs = hparams["n_jobs"]
+        
+        logger.info(f"Model loaded from {file_path}")

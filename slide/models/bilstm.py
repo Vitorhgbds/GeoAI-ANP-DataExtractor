@@ -35,10 +35,11 @@ class LSTMClassifier(nn.Module):
             hidden_size=hidden_size,
             num_layers=num_layers,
             dropout=dropout if num_layers > 1 else 0,
-            batch_first=True
+            batch_first=True,
+            bidirectional=True
         )
         self.fc = nn.Sequential(
-            nn.Linear(hidden_size, 64),
+            nn.Linear(hidden_size * 2, 64),
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(64, num_classes)
@@ -53,7 +54,7 @@ class LSTMClassifier(nn.Module):
         return out
 
 
-class LSTM(BaseModel):
+class BILSTM(BaseModel):
     def __init__(
         self, 
         sequence_length: int = 11, 

@@ -1,0 +1,19 @@
+model_type: 'RandomForest'
+params:
+  n_estimators: 
+    - 200
+    - 300
+    - 400
+    - 500
+  min_samples_split: 
+    low: 2
+    high: 18
+    step: 4
+  min_samples_leaf: 
+    low: 2
+    high: 10
+    step: 2
+  max_features:
+    - 'sqrt'
+    - 'log2'
+    - 0.5

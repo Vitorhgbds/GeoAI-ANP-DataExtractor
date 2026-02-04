@@ -15,6 +15,7 @@ from slide.models.knn import KNN
 from slide.models.lstm import LSTM
 from slide.models.tree import DecisionTree
 from slide.models.logistic import LogisticRegression
+from slide.models.bilstm import BILSTM
 from slide.features.agpExtractionPolicy import Lithology, Summary
 from slide.features.featureExtractorEngine import FeatureExtractorEngine
 from slide.features.logExtractionPolicy import LogChannelsExtractionPolicy, LogExtractionPolicy
@@ -125,6 +126,11 @@ def train_logistic_model(*args, **kwargs):
     engine = ModelEngine(policy=policy, model=model)
     engine.build()
 
+def train_bilstm_model(*args, **kwargs):
+    policy = DefaultFeatures()
+    model = BILSTM()
+    engine = ModelEngine(policy=policy, model=model)
+    engine.build()
 
 def make_shared_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
     parser.add_argument(
@@ -242,6 +248,12 @@ def make_train_subparsers() -> dict:
         "description": "Create a model training engine to train a Logistic Regression model using the feature dataset.",
         "func": train_logistic_model,
     }
+    train_subparsers["bilstm"] = {
+        "help": "Train a BiLSTM model using the feature dataset",
+        "description": "Create a model training engine to train a BiLSTM model using the feature dataset.",
+        "func": train_bilstm_model,
+    }
+
     return train_subparsers
 
 def build_argparser() -> argparse.ArgumentParser:

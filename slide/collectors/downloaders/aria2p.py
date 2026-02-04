@@ -32,7 +32,7 @@ class Aria2P(DownloadPolicy):
             [
                 "aria2c",
                 "--enable-rpc",
-                "--rpc-listen-all=true",
+                "--rpc-listen-all=false",
                 "--rpc-allow-origin-all",
                 f"--rpc-listen-port={self.rpc_port}",
                 "--max-connection-per-server=16",
