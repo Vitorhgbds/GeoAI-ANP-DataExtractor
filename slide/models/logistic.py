@@ -16,7 +16,7 @@ class LogisticRegression(BaseModel):
         self,
         max_iter: int | None = None,
         C: float | None = None,
-        solver: str | None = None,
+        solver: str = "lbfgs",
         random_state: int = 42,
         n_jobs: int = -1,
         *args, **kwargs):
