@@ -4,7 +4,7 @@ import pandas as pd
 from slide.logger import Logger
 from slide.models import BaseModel, ModelDataset
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, f1_score
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.impute import SimpleImputer
 from torch.utils.data import TensorDataset, DataLoader, WeightedRandomSampler
 import pickle
@@ -45,13 +45,10 @@ class LSTMClassifier(nn.Module):
         )
     
     def forward(self, x):
-        lstm_out, (hidden, cell) = self.lstm(x)
-        forward_hidden = hidden[-2, :, :]
-        backward_hidden = hidden[-1, :, :]
-        combined_hidden = torch.cat((forward_hidden, backward_hidden), dim=1)
-        out = self.fc(combined_hidden)
+        _, (hidden, _) = self.lstm(x)
+        last_layer_hidden = hidden[-1]          # shape: (batch, hidden_size)
+        out = self.fc(last_layer_hidden)
         return out
-
 
 class LSTM(BaseModel):
     def __init__(
@@ -61,16 +58,16 @@ class LSTM(BaseModel):
         num_layers: int = 2, 
         dropout: float = 0.3,
         batch_size: int = 128,
-        epochs: int = 50,
+        epochs: int = 256,
         learning_rate: float = 1e-3,
-        patience: int = 10,
+        patience: int = 16,
         num_workers: int = 4):
         
         super().__init__()
         self.sequence_length = sequence_length
         self.hidden_size = hidden_size
         self.num_layers = num_layers
-        self.dropout = dropout
+        self.dropout = dropout if num_layers > 1 else 0.0
         self.batch_size = batch_size
         self.epochs = epochs
         self.learning_rate = learning_rate
@@ -81,6 +78,7 @@ class LSTM(BaseModel):
         self.model = None
         self.imputer = None
         logger.info(f"Using device: {self.device}")
+        self.scaler = StandardScaler()
 
     def create_sequences(self, data, targets):
         """
@@ -88,6 +86,8 @@ class LSTM(BaseModel):
         """
         sequences = []
         target_labels = []
+        
+        logger.debug(f"Creating sequences with sequence length: {self.sequence_length}")
         
         half = self.sequence_length // 2
         for idx in range(half, len(data) - (self.sequence_length - half)):
@@ -100,7 +100,7 @@ class LSTM(BaseModel):
         self, 
         data: ModelDataset) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         
-        # Remove rows with missing target values
+        # Remove rows with missing target values (keep original indices)
         train_mask = data.train_target.notna()
         train_data_clean = data.train[train_mask]
         train_target_clean = data.train_target[train_mask]
@@ -114,18 +114,21 @@ class LSTM(BaseModel):
         train_data_imputed = self.imputer.fit_transform(train_data_clean)
         test_data_imputed = self.imputer.transform(test_data_clean)
         
+        train_data_scaled = self.scaler.fit_transform(train_data_imputed)
+        test_data_scaled = self.scaler.transform(test_data_imputed)
         # Create sequences
         train_sequences, train_targets_seq = self.create_sequences(
-            train_data_imputed, 
+            train_data_scaled, 
             train_target_clean
         )
         test_sequences, test_targets_seq = self.create_sequences(
-            test_data_imputed, 
+            test_data_scaled, 
             test_target_clean
         )
         
         logger.debug(f"Train sequences shape: {train_sequences.shape}")
         logger.debug(f"Test sequences shape: {test_sequences.shape}")
+        logger.debug(f"Train targets shape: {train_targets_seq.shape}")
         
         # Encode targets
         self.label_encoder = LabelEncoder()
@@ -135,7 +138,7 @@ class LSTM(BaseModel):
         return train_sequences, train_targets_encoded, test_sequences, test_targets_encoded
 
     def train(self, data: ModelDataset) -> None:
-        logger.info("Preparing sequential data for BiLSTM training...")
+        logger.info("Preparing sequential data for LSTM training...")
         logger.debug(f"CUDA available: {torch.cuda.is_available()}")
         logger.debug(f"Device name: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU'}")
         logger.debug(f"CUDA version: {torch.version.cuda}")
@@ -148,38 +151,52 @@ class LSTM(BaseModel):
         
         logger.debug(f"Num classes: {num_classes}, Num features: {num_features}")
         
-        # Convert to tensors
-        train_X = torch.as_tensor(X_train, dtype=torch.float32)
-        train_y = torch.as_tensor(y_train, dtype=torch.long)
-        test_X = torch.as_tensor(X_test, dtype=torch.float32)
-        test_y = torch.as_tensor(y_test, dtype=torch.long)
-        
-        # Class weights for imbalanced data
+
+        num_classes  = len(self.label_encoder.classes_)
+        num_features = X_train.shape[2]
+
+        # ----- Cache tensors across trials (avoid re-creating huge tensors every Optuna trial) -----
+        # Only do this if X_train/x_test are the same for all trials (they are in your flow).
+        if not hasattr(self, "_cached_lstm_tensors"):
+            logger.info("Caching LSTM tensors for faster Optuna trials...")
+            train_X = torch.as_tensor(X_train, dtype=torch.float32)  # CPU
+            train_y = torch.as_tensor(y_train, dtype=torch.long)     # CPU
+            test_X  = torch.as_tensor(X_test,  dtype=torch.float32)  # CPU
+            test_y  = torch.as_tensor(y_test,  dtype=torch.long)     # CPU
+            self._cached_lstm_tensors = (train_X, train_y, test_X, test_y)
+        else:
+            logger.debug("Using cached LSTM tensors...")
+            train_X, train_y, test_X, test_y = self._cached_lstm_tensors
+
+        # ----- Class weights (fast + avoids WeightedRandomSampler) -----
         y_train_np = np.asarray(y_train)
         counts = np.bincount(y_train_np)
+
         beta = 0.9999
         effective_num = 1.0 - np.power(beta, counts)
         class_weights = (1.0 - beta) / np.maximum(effective_num, 1e-12)
+
+        # normalize (optional but nice)
         class_weights = class_weights / class_weights.mean()
+
         sample_weights = class_weights[y_train_np]
-        
+
         sampler = WeightedRandomSampler(
             weights=torch.as_tensor(sample_weights, dtype=torch.double),
             num_samples=len(sample_weights),
             replacement=True
         )
-        
-        weight_tensor = torch.tensor(class_weights, dtype=torch.float32, device=self.device)
+
+        weight_tensor = torch.tensor(class_weights, dtype=torch.float32, device=DEVICE)
         criterion = nn.CrossEntropyLoss(weight=weight_tensor)
-        
-        # Create data loaders
+
         train_ds = TensorDataset(train_X, train_y)
-        test_ds = TensorDataset(test_X, test_y)
-        
+        test_ds  = TensorDataset(test_X, test_y)
+
         train_loader = DataLoader(
             train_ds,
             batch_size=self.batch_size,
-            sampler=sampler,
+            sampler=sampler,                     # <-- much faster than WeightedRandomSampler
             num_workers=self.num_workers,
             pin_memory=True,
             persistent_workers=(self.num_workers > 0),
@@ -194,107 +211,94 @@ class LSTM(BaseModel):
             persistent_workers=(self.num_workers > 0),
             prefetch_factor=2
         )
-        
-        # Initialize model
+
         self.model = LSTMClassifier(
             num_features=num_features,
             hidden_size=self.hidden_size,
             num_layers=self.num_layers,
             num_classes=num_classes,
             dropout=self.dropout
-        ).to(self.device)
-        
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
-        
-        # Mixed precision training
-        use_amp = (self.device.type == "cuda")
+        ).to(DEVICE)
+
+        optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
+
+        # AMP (mixed precision)
+        use_amp = (DEVICE.type == "cuda")
         scaler = torch.amp.GradScaler(enabled=use_amp)
-        
+
         best_f1 = -1.0
         best_state = None
         no_improve = 0
-        
-        logger.info(f"Training with: hidden_size={self.hidden_size}, num_layers={self.num_layers}, "
-                   f"dropout={self.dropout}, batch_size={self.batch_size}")
-        
-        try:
-            for epoch in range(self.epochs):
-                # Training phase
-                self.model.train()
-                total_loss = 0.0
-                correct = 0
-                total = 0
-                
-                for batch_x, batch_y in train_loader:
-                    batch_x = batch_x.to(self.device, non_blocking=True)
-                    batch_y = batch_y.to(self.device, non_blocking=True)
-                    
-                    optimizer.zero_grad(set_to_none=True)
-                    
-                    with torch.amp.autocast(device_type=self.device.type, dtype=torch.float16, enabled=use_amp):
-                        logits = self.model(batch_x)
-                        loss = criterion(logits, batch_y)
-                    
-                    scaler.scale(loss).backward()
-                    scaler.step(optimizer)
-                    scaler.update()
-                    
-                    total_loss += loss.item()
-                    preds = logits.argmax(dim=1)
-                    correct += (preds == batch_y).sum().item()
-                    total += batch_y.numel()
-                
-                train_loss = total_loss / max(1, len(train_loader))
-                train_acc = correct / max(1, total)
-                
-                # Validation phase
-                self.model.eval()
-                preds_all = []
-                true_all = []
-                
-                with torch.no_grad():
-                    for batch_x, batch_y in test_loader:
-                        batch_x = batch_x.to(self.device, non_blocking=True)
-                        logits = self.model(batch_x)
-                        preds_all.append(logits.argmax(dim=1).cpu())
-                        true_all.append(batch_y.cpu())
-                
-                preds_all = torch.cat(preds_all).numpy()
-                true_all = torch.cat(true_all).numpy()
-                
-                val_acc = accuracy_score(true_all, preds_all)
-                val_f1 = f1_score(true_all, preds_all, average="macro", zero_division=0)
-                
-                # Early stopping
-                if val_f1 > best_f1:
-                    best_f1 = val_f1
-                    no_improve = 0
-                    best_state = {k: v.detach().cpu().clone() for k, v in self.model.state_dict().items()}
-                    logger.debug(f"New best F1: {best_f1:.4f}")
-                else:
-                    no_improve += 1
-                
-                if (epoch + 1) % 5 == 0:
-                    logger.info(
-                        f"Epoch {epoch+1}/{self.epochs} | Loss: {train_loss:.4f} | "
-                        f"Train Acc: {train_acc:.4f} | Val Acc: {val_acc:.4f} | "
-                        f"Val F1: {val_f1:.4f} | No Improve: {no_improve}/{self.patience}"
-                    )
-                
-                if no_improve >= self.patience:
-                    logger.info(f"Early stopping at epoch {epoch+1}")
-                    break
-            
-            # Restore best model
-            if best_state is not None:
-                self.model.load_state_dict(best_state, strict=True)
-                logger.info(f"Training complete. Best Val F1: {best_f1:.4f}")
-            
-        finally:
-            if self.device.type == "cuda":
-                torch.cuda.empty_cache()
-            gc.collect()
 
+        for epoch in range(self.epochs):
+            # ---- Train ----
+            self.model.train()
+            total_loss = 0.0
+            correct = 0
+            total = 0
+
+            for batch_x, batch_y in train_loader:
+                batch_x = batch_x.to(DEVICE, non_blocking=True)
+                batch_y = batch_y.to(DEVICE, non_blocking=True)
+
+                optimizer.zero_grad(set_to_none=True)
+
+                with torch.amp.autocast(device_type=DEVICE.type, dtype=torch.float16, enabled=use_amp):
+                    logits = self.model(batch_x)
+                    loss = criterion(logits, batch_y)
+
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+
+                total_loss += loss.item()
+                preds = logits.argmax(dim=1)
+                correct += (preds == batch_y).sum().item()
+                total += batch_y.numel()
+
+            train_loss = total_loss / max(1, len(train_loader))
+            train_acc = correct / max(1, total)
+
+            self.model.eval()
+            # Collect on CPU *once per eval*, not per batch
+            preds_all = []
+            true_all  = []
+
+            with torch.no_grad():
+                for batch_x, batch_y in test_loader:
+                    batch_x = batch_x.to(DEVICE, non_blocking=True)
+                    logits = self.model(batch_x)
+                    preds_all.append(logits.argmax(dim=1).cpu())
+                    true_all.append(batch_y.cpu())
+
+            preds_all = torch.cat(preds_all).numpy()
+            true_all  = torch.cat(true_all).numpy()
+
+            # If you want it even faster: compute ONLY accuracy during Optuna,
+            # and compute F1 only for the best trial after optimization.
+            val_acc = accuracy_score(true_all, preds_all)
+            val_f1  = f1_score(true_all, preds_all, average="macro", zero_division=0)
+
+            # Early stopping
+            if val_f1 > best_f1:
+                best_f1 = val_f1
+                no_improve = 0
+                # Proper deep copy of weights (avoid state_dict().copy() shallow copy)
+                best_state = {k: v.detach().cpu().clone() for k, v in self.model.state_dict().items()}
+            else:
+                no_improve += 1
+
+            logger.info(
+                f"Epoch {epoch+1}/{self.epochs} | loss {train_loss:.4f} | train_acc {train_acc:.4f} | "
+                f"val_acc {val_acc:.4f} | val_f1m {val_f1:.4f} | no_improve {no_improve}/{self.patience}"
+            )
+
+            if no_improve >= self.patience:
+                break
+
+        if best_state is not None:
+            self.model.load_state_dict(best_state, strict=True)
+        
     def predict(self, input_data: pd.DataFrame) -> np.ndarray:
         """
         Predict rock types for input data.
@@ -318,7 +322,7 @@ class LSTM(BaseModel):
         data_imputed = self.imputer.transform(input_data)
         
         # Create sequences
-        sequences, _ = self.create_sequences(data_imputed, dummy_targets, self.sequence_length)
+        sequences, _ = self.create_sequences(data_imputed, dummy_targets)
         
         # Convert to tensor
         sequences_tensor = torch.as_tensor(sequences, dtype=torch.float32)
@@ -358,25 +362,11 @@ class LSTM(BaseModel):
         if self.model is None:
             raise ValueError("Model not trained. Call train() first or load a trained model.")
         
-        # Process test data
-        test_mask = test_data.test_target.notna()
-        test_data_clean = test_data.test[test_mask]
-        test_target_clean = test_data.test_target[test_mask]
-        
-        # Impute and create sequences
-        test_data_imputed = self.imputer.transform(test_data_clean)
-        test_sequences, test_targets_seq = self.create_sequences(
-            test_data_imputed, 
-            test_target_clean, 
-            self.sequence_length
-        )
-        
-        # Encode targets
-        test_targets_encoded = self.label_encoder.transform(test_targets_seq)
+        X_train, y_train, X_test, y_test = self.__process_train_test(test_data)
         
         # Convert to tensors
-        test_X = torch.as_tensor(test_sequences, dtype=torch.float32)
-        test_y = torch.as_tensor(test_targets_encoded, dtype=torch.long)
+        test_X = torch.as_tensor(X_test, dtype=torch.float32)
+        test_y = torch.as_tensor(y_test, dtype=torch.long)
         
         test_ds = TensorDataset(test_X, test_y)
         test_loader = DataLoader(test_ds, batch_size=self.batch_size, shuffle=False)
@@ -419,7 +409,7 @@ class LSTM(BaseModel):
             "confusion_matrix": cm.tolist()
         }
 
-    def save(self, file_path: str = "bilstm_model.pkl") -> None:
+    def save(self, file_path: str = "lstm_model.pkl") -> None:
         """
         Save the trained model to disk.
         

@@ -4,7 +4,7 @@ import pandas as pd
 from slide.logger import Logger
 from slide.models import BaseModel, ModelDataset
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, f1_score
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.impute import SimpleImputer
 from torch.utils.data import TensorDataset, DataLoader, WeightedRandomSampler
 import pickle
@@ -62,9 +62,9 @@ class BILSTM(BaseModel):
         num_layers: int = 2, 
         dropout: float = 0.3,
         batch_size: int = 128,
-        epochs: int = 50,
+        epochs: int = 256,
         learning_rate: float = 1e-3,
-        patience: int = 10,
+        patience: int = 16,
         num_workers: int = 4):
         
         super().__init__()
@@ -81,25 +81,62 @@ class BILSTM(BaseModel):
         self.label_encoder = LabelEncoder()
         self.model = None
         self.imputer = None
+        self.scaler = StandardScaler()
         logger.info(f"Using device: {self.device}")
 
     def create_sequences(self, data, targets):
         """
-        Create sequences from well log data using centered windows.
+        Create sequences from well log data.
+        Each sequence = sequence_length consecutive readings.
+        Target = the rock type at the END of each sequence.
         """
+        logger.debug(f"create_sequences input - data type: {type(data)}, shape: {data.shape if hasattr(data, 'shape') else len(data)}")
+        logger.debug(f"create_sequences input - targets type: {type(targets)}, len: {len(targets)}")
+        
         sequences = []
         target_labels = []
         
-        half = self.sequence_length // 2
-        for idx in range(half, len(data) - (self.sequence_length - half)):
-            sequences.append(data[idx - half:idx + (self.sequence_length - half)])
-            target_labels.append(targets.iloc[idx])
+        # Convert to numpy if needed
+        if isinstance(data, pd.DataFrame):
+            data_array = data.values
+            logger.debug(f"Converted DataFrame to numpy array: {data_array.shape}")
+        else:
+            data_array = data
         
-        return np.array(sequences), np.array(target_labels)
+        if isinstance(targets, pd.Series):
+            targets_array = targets.values
+            logger.debug(f"Converted Series to numpy array: {targets_array.shape}")
+        else:
+            targets_array = targets
+        
+        logger.debug(f"Final arrays - data: {data_array.shape}, targets: {targets_array.shape}")
+        logger.debug(f"Sequence length: {self.sequence_length}")
+        logger.debug(f"Will create sequences from idx={0} to idx={len(data_array) - self.sequence_length}")
+        
+        for idx in range(len(data_array) - self.sequence_length):
+            sequences.append(data_array[idx:idx + self.sequence_length])
+            target_labels.append(targets_array[idx + self.sequence_length])
+        
+        sequences_array = np.array(sequences)
+        target_labels_array = np.array(target_labels)
+        
+        logger.debug(f"Created sequences - shape: {sequences_array.shape}, targets shape: {target_labels_array.shape}")
+        logger.debug(f"First target value: {target_labels_array[0] if len(target_labels_array) > 0 else 'N/A'}")
+        logger.debug(f"Last target value: {target_labels_array[-1] if len(target_labels_array) > 0 else 'N/A'}")
+        logger.debug(f"Unique target values in sequences: {np.unique(target_labels_array) if len(target_labels_array) > 0 else 'N/A'}")
+        
+        return sequences_array, target_labels_array
 
     def __process_train_test(
         self, 
         data: ModelDataset) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        
+        logger.debug("="*80)
+        logger.debug("Starting __process_train_test")
+        logger.debug(f"Raw data shapes - train: {data.train.shape}, test: {data.test.shape}")
+        logger.debug(f"Raw targets shapes - train: {data.train_target.shape}, test: {data.test_target.shape}")
+        logger.debug(f"Train targets unique values: {data.train_target.nunique()}")
+        logger.debug(f"Test targets unique values: {data.test_target.nunique()}")
         
         # Remove rows with missing target values
         train_mask = data.train_target.notna()
@@ -115,18 +152,23 @@ class BILSTM(BaseModel):
         train_data_imputed = self.imputer.fit_transform(train_data_clean)
         test_data_imputed = self.imputer.transform(test_data_clean)
         
+        train_data_scaled = self.scaler.fit_transform(train_data_imputed)
+        test_data_scaled = self.scaler.transform(test_data_imputed)
         # Create sequences
+        logger.debug("Creating train sequences...")
         train_sequences, train_targets_seq = self.create_sequences(
-            train_data_imputed, 
+            train_data_scaled, 
             train_target_clean
         )
+        
+        logger.debug("Creating test sequences...")
         test_sequences, test_targets_seq = self.create_sequences(
-            test_data_imputed, 
+            test_data_scaled, 
             test_target_clean
         )
         
-        logger.debug(f"Train sequences shape: {train_sequences.shape}")
-        logger.debug(f"Test sequences shape: {test_sequences.shape}")
+        logger.debug(f"Train sequences: {train_sequences.shape}, targets: {train_targets_seq.shape}")
+        logger.debug(f"Test sequences: {test_sequences.shape}, targets: {test_targets_seq.shape}")
         
         # Encode targets
         self.label_encoder = LabelEncoder()
@@ -154,6 +196,14 @@ class BILSTM(BaseModel):
         train_y = torch.as_tensor(y_train, dtype=torch.long)
         test_X = torch.as_tensor(X_test, dtype=torch.float32)
         test_y = torch.as_tensor(y_test, dtype=torch.long)
+
+        # DEBUG: Check tensor properties
+        logger.debug(f"Tensor dtypes - train_X: {train_X.dtype}, train_y: {train_y.dtype}")
+        logger.debug(f"Tensor contains NaN - train_X: {torch.isnan(train_X).any()}, test_X: {torch.isnan(test_X).any()}")
+        logger.debug(f"Tensor contains inf - train_X: {torch.isinf(train_X).any()}, test_X: {torch.isinf(test_X).any()}")
+        logger.debug(f"Target value ranges - train_y: [{train_y.min()}, {train_y.max()}], test_y: [{test_y.min()}, {test_y.max()}]")
+        logger.debug(f"Sample train sequence:\n{train_X[0]}")
+        logger.debug(f"Sample train target: {train_y[0]}")
         
         # Class weights for imbalanced data
         y_train_np = np.asarray(y_train)
@@ -245,6 +295,8 @@ class BILSTM(BaseModel):
                     correct += (preds == batch_y).sum().item()
                     total += batch_y.numel()
                 
+                # logger.debug(f"Epoch {epoch+1} - Training loss: {total_loss:.4f}, Accuracy: {correct/total:.4f}")
+                # logger.debug(f"train_loader {len(train_loader)}, test_loader {len(test_loader)}")
                 train_loss = total_loss / max(1, len(train_loader))
                 train_acc = correct / max(1, total)
                 
@@ -275,12 +327,11 @@ class BILSTM(BaseModel):
                 else:
                     no_improve += 1
                 
-                if (epoch + 1) % 5 == 0:
-                    logger.info(
-                        f"Epoch {epoch+1}/{self.epochs} | Loss: {train_loss:.4f} | "
-                        f"Train Acc: {train_acc:.4f} | Val Acc: {val_acc:.4f} | "
-                        f"Val F1: {val_f1:.4f} | No Improve: {no_improve}/{self.patience}"
-                    )
+                logger.info(
+                    f"Epoch {epoch+1}/{self.epochs} | Loss: {train_loss:.4f} | "
+                    f"Train Acc: {train_acc:.4f} | Val Acc: {val_acc:.4f} | "
+                    f"Val F1: {val_f1:.4f} | No Improve: {no_improve}/{self.patience}"
+                )
                 
                 if no_improve >= self.patience:
                     logger.info(f"Early stopping at epoch {epoch+1}")
@@ -359,25 +410,12 @@ class BILSTM(BaseModel):
         if self.model is None:
             raise ValueError("Model not trained. Call train() first or load a trained model.")
         
-        # Process test data
-        test_mask = test_data.test_target.notna()
-        test_data_clean = test_data.test[test_mask]
-        test_target_clean = test_data.test_target[test_mask]
-        
-        # Impute and create sequences
-        test_data_imputed = self.imputer.transform(test_data_clean)
-        test_sequences, test_targets_seq = self.create_sequences(
-            test_data_imputed, 
-            test_target_clean, 
-            self.sequence_length
-        )
-        
-        # Encode targets
-        test_targets_encoded = self.label_encoder.transform(test_targets_seq)
+        # Process data
+        X_train, y_train, X_test, y_test = self.__process_train_test(test_data)
         
         # Convert to tensors
-        test_X = torch.as_tensor(test_sequences, dtype=torch.float32)
-        test_y = torch.as_tensor(test_targets_encoded, dtype=torch.long)
+        test_X = torch.as_tensor(X_test, dtype=torch.float32)
+        test_y = torch.as_tensor(y_test, dtype=torch.long)
         
         test_ds = TensorDataset(test_X, test_y)
         test_loader = DataLoader(test_ds, batch_size=self.batch_size, shuffle=False)
