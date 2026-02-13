@@ -5,7 +5,7 @@ params:
     - 256
   num_layers:
     low: 2
-    high: 4
+    high: 6
   dropout:
     low: 0.1
     high: 0.3
