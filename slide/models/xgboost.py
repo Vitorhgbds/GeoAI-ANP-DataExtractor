@@ -1,4 +1,5 @@
 import numpy as np
+from sklearn.discriminant_analysis import StandardScaler
 from sklearn.impute import SimpleImputer
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, f1_score
 from sklearn.preprocessing import LabelEncoder
@@ -51,8 +52,9 @@ class XGBoost(BaseModel):
         self.random_state = random_state
         self.n_jobs = n_jobs
         self.model = None
-        self.imputer = None
-        self.label_encoder = None
+        self.imputer = SimpleImputer(strategy='median')
+        self.encoder = LabelEncoder()
+        self.scaler = StandardScaler()
         logger.info(
             f"Initialized XGBoost with n_estimators={n_estimators}, "
             f"learning_rate={learning_rate}, max_depth={max_depth}"
@@ -71,18 +73,15 @@ class XGBoost(BaseModel):
         train_mask = data.train_target.notna()
         train_data_clean = data.train[train_mask]
         train_target_clean = data.train_target[train_mask]
-        
+
         # Impute missing values
-        self.imputer = SimpleImputer(strategy='median')
         train_data_imputed = self.imputer.fit_transform(train_data_clean)
+        train_data_scaled = self.scaler.fit_transform(train_data_imputed)
+        train_target_encoded = self.encoder.fit_transform(train_target_clean)
         
-        # Encode targets
-        self.label_encoder = LabelEncoder()
-        train_target_encoded = self.label_encoder.fit_transform(train_target_clean)
-        
-        logger.debug(f"Train data shape: {train_data_imputed.shape}")
+        logger.debug(f"Train data shape: {train_data_scaled.shape}")
         logger.debug(f"Train target shape: {train_target_encoded.shape}")
-        logger.debug(f"Classes: {self.label_encoder.classes_}")
+        logger.debug(f"Classes: {self.encoder.classes_}")
         
         # Train model
         self.model = xgb.XGBClassifier(
@@ -99,32 +98,15 @@ class XGBoost(BaseModel):
             verbose=2
         )
         
-        self.model.fit(train_data_imputed, train_target_encoded)
+        self.model.fit(train_data_scaled, train_target_encoded)
         
         # Evaluate on training data
-        train_preds = self.model.predict(train_data_imputed)
+        train_preds = self.model.predict(train_data_scaled)
         train_acc = accuracy_score(train_target_encoded, train_preds)
         train_f1 = f1_score(train_target_encoded, train_preds, average='macro', zero_division=0)
         
         logger.info(f"Training Accuracy: {train_acc:.4f}")
         logger.info(f"Training F1 (macro): {train_f1:.4f}")
-        
-        # Evaluate on test data if available
-        test_mask = data.test_target.notna()
-        if test_mask.sum() > 0:
-            test_data_clean = data.test[test_mask]
-            test_target_clean = data.test_target[test_mask]
-            
-            test_data_imputed = self.imputer.transform(test_data_clean)
-            test_target_encoded = self.label_encoder.transform(test_target_clean)
-            
-            test_preds = self.model.predict(test_data_imputed)
-            test_acc = accuracy_score(test_target_encoded, test_preds)
-            test_f1 = f1_score(test_target_encoded, test_preds, average='macro', zero_division=0)
-            
-            logger.info(f"Test Accuracy: {test_acc:.4f}")
-            logger.info(f"Test F1 (macro): {test_f1:.4f}")
-        
         logger.info("Training complete!")
 
     def predict(self, input_data) -> list:
@@ -143,17 +125,17 @@ class XGBoost(BaseModel):
         if self.imputer is None:
             raise ValueError("Imputer not fitted. Call train() first or load a trained model.")
         
-        if self.label_encoder is None:
+        if self.encoder is None:
             raise ValueError("Label encoder not fitted. Call train() first or load a trained model.")
         
         # Impute missing values
         data_imputed = self.imputer.transform(input_data)
-        
+        data_scaled = self.scaler.transform(data_imputed)
         # Make predictions (encoded)
-        predictions_encoded = self.model.predict(data_imputed)
+        predictions_encoded = self.model.predict(data_scaled)
         
         # Decode labels
-        predictions = self.label_encoder.inverse_transform(predictions_encoded)
+        predictions = self.encoder.inverse_transform(predictions_encoded)
         
         return predictions.tolist()
 
@@ -173,7 +155,7 @@ class XGBoost(BaseModel):
         if self.imputer is None:
             raise ValueError("Imputer not fitted. Call train() first or load a trained model.")
         
-        if self.label_encoder is None:
+        if self.encoder is None:
             raise ValueError("Label encoder not fitted. Call train() first or load a trained model.")
         
         # Remove rows with missing target values
@@ -183,25 +165,22 @@ class XGBoost(BaseModel):
         
         # Impute missing values
         test_data_imputed = self.imputer.transform(test_data_clean)
-        
-        # Encode targets
-        test_target_encoded = self.label_encoder.transform(test_target_clean)
+        test_data_scaled = self.scaler.transform(test_data_imputed)
         
         logger.debug(f"Test data shape: {data.test.shape}")
         logger.debug(f"Test target shape: {data.test_target.shape}")
         # Make predictions
-        predictions_encoded = self.model.predict(test_data_imputed)
+        predictions_encoded = self.model.predict(test_data_scaled)
         
         # Decode for reporting
-        predictions_decoded = self.label_encoder.inverse_transform(predictions_encoded)
-        targets_decoded = self.label_encoder.inverse_transform(test_target_encoded)
+        predictions_decoded = self.encoder.inverse_transform(predictions_encoded)
         
         # Calculate metrics
-        accuracy = accuracy_score(test_target_encoded, predictions_encoded)
-        f1 = f1_score(test_target_encoded, predictions_encoded, average='macro', zero_division=0)
-        f1_weighted = f1_score(test_target_encoded, predictions_encoded, average='weighted', zero_division=0)
-        report = classification_report(targets_decoded, predictions_decoded, output_dict=True)
-        cm = confusion_matrix(test_target_encoded, predictions_encoded)
+        accuracy = accuracy_score(test_target_clean, predictions_decoded)
+        f1 = f1_score(test_target_clean, predictions_decoded, average='macro', zero_division=0)
+        f1_weighted = f1_score(test_target_clean, predictions_decoded, average='weighted', zero_division=0)
+        report = classification_report(test_target_clean, predictions_decoded, output_dict=True)
+        cm = confusion_matrix(test_target_clean, predictions_decoded)
         
         # Get feature importances
         feature_importances = self.model.feature_importances_.tolist()
@@ -234,7 +213,8 @@ class XGBoost(BaseModel):
         model_data = {
             "model": self.model,
             "imputer": self.imputer,
-            "label_encoder": self.label_encoder,
+            "encoder": self.encoder,
+            "scaler": self.scaler,
             "hyperparameters": {
                 "n_estimators": self.n_estimators,
                 "subsample": self.subsample,
@@ -265,8 +245,8 @@ class XGBoost(BaseModel):
         # Restore model and preprocessors
         self.model = model_data["model"]
         self.imputer = model_data["imputer"]
-        self.label_encoder = model_data["label_encoder"]
-        
+        self.encoder = model_data["encoder"]
+        self.scaler = model_data["scaler"]
         # Restore hyperparameters
         hparams = model_data["hyperparameters"]
         self.n_estimators = hparams["n_estimators"]

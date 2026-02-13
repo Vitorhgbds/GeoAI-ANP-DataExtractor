@@ -6,6 +6,7 @@ from pathlib import Path
 from slide.models import BaseModel, ModelDataset
 from slide.models.featurePolicy import DefaultFeatures
 from slide.models.forest import RandomForest
+from slide.models.tabpfn import TABPFN
 from slide.models.xgboost import XGBoost
 from slide.models.knn import KNN
 from slide.models.lstm import LSTM
@@ -26,7 +27,8 @@ model_classes_map: dict[str, BaseModel] = {
     "DecisionTree": DecisionTree,
     "LogisticRegression": LogisticRegression,
     "LSTM": LSTM,
-    "BILSTM": BILSTM
+    "BILSTM": BILSTM,
+    "TABPFN": TABPFN
 }
     
 def load_config(config_path: str) -> dict:

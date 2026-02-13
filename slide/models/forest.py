@@ -1,6 +1,10 @@
+import numpy as np
+from sklearn.calibration import LabelEncoder
+from sklearn.discriminant_analysis import StandardScaler
 from sklearn.impute import SimpleImputer
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, f1_score
+from sklearn.utils import compute_class_weight
 from slide.logger import Logger
 from slide.models import BaseModel, ModelDataset
 import json
@@ -46,8 +50,9 @@ class RandomForest(BaseModel):
         self.random_state = random_state
         self.n_jobs = n_jobs
         self.model = None
-        self.imputer = None
-        self.label_encoder_mapping = None
+        self.scaler = StandardScaler()
+        self.encoder = LabelEncoder()
+        self.imputer = SimpleImputer(strategy='median')
         logger.info(
             f"Initialized RandomForest with n_estimators={n_estimators}, "
             f"min_samples_split={min_samples_split}, max_features={max_features}"
@@ -67,21 +72,26 @@ class RandomForest(BaseModel):
         train_data_clean = data.train[train_mask]
         train_target_clean = data.train_target[train_mask]
         
-        # Impute missing values
-        self.imputer = SimpleImputer(strategy='median')
-        train_data_imputed = self.imputer.fit_transform(train_data_clean)
+        test_mask = data.test_target.notna()
+        test_data_clean = data.test[test_mask]
+        test_target_clean = data.test_target[test_mask]
         
-        # Create label encoding for non-numeric targets
-        if train_target_clean.dtype == 'object':
-            unique_labels = sorted(train_target_clean.unique())
-            self.label_encoder_mapping = {label: idx for idx, label in enumerate(unique_labels)}
-            train_target_encoded = train_target_clean.map(self.label_encoder_mapping)
-        else:
-            train_target_encoded = train_target_clean
+        # Impute missing values
+        train_data_imputed = self.imputer.fit_transform(train_data_clean)
+        test_data_imputed = self.imputer.transform(test_data_clean)
+        
+        train_data_scaled = self.scaler.fit_transform(train_data_imputed)
+        test_data_scaled = self.scaler.transform(test_data_imputed)
+        
+        train_target_encoded = self.encoder.fit_transform(train_target_clean)
+        
         
         logger.debug(f"Train data shape: {train_data_imputed.shape}")
         logger.debug(f"Train target shape: {train_target_encoded.shape}")
         
+        classes = np.unique(train_target_encoded)
+        weights = compute_class_weight(class_weight="balanced", classes=classes, y=train_target_encoded)
+        class_weights = dict(zip(classes, weights))
         # Train model
         self.model = RandomForestClassifier(
             n_estimators=self.n_estimators,
@@ -92,38 +102,29 @@ class RandomForest(BaseModel):
             bootstrap=self.bootstrap,
             random_state=self.random_state,
             n_jobs=self.n_jobs,
-            verbose=1
+            verbose=1,
+            #class_weight=class_weights
         )
         
-        self.model.fit(train_data_imputed, train_target_encoded)
+        self.model.fit(train_data_scaled, train_target_encoded)
         
         # Evaluate on training data
-        train_preds = self.model.predict(train_data_imputed)
+        train_preds = self.model.predict(train_data_scaled)
         train_acc = accuracy_score(train_target_encoded, train_preds)
         train_f1 = f1_score(train_target_encoded, train_preds, average='macro', zero_division=0)
         
         logger.info(f"Training Accuracy: {train_acc:.4f}")
         logger.info(f"Training F1 (macro): {train_f1:.4f}")
         
-        # Evaluate on test data if available
-        test_mask = data.test_target.notna()
-        if test_mask.sum() > 0:
-            test_data_clean = data.test[test_mask]
-            test_target_clean = data.test_target[test_mask]
-            
-            test_data_imputed = self.imputer.transform(test_data_clean)
-            
-            if self.label_encoder_mapping:
-                test_target_encoded = test_target_clean.map(self.label_encoder_mapping)
-            else:
-                test_target_encoded = test_target_clean
-            
-            test_preds = self.model.predict(test_data_imputed)
-            test_acc = accuracy_score(test_target_encoded, test_preds)
-            test_f1 = f1_score(test_target_encoded, test_preds, average='macro', zero_division=0)
-            
-            logger.info(f"Test Accuracy: {test_acc:.4f}")
-            logger.info(f"Test F1 (macro): {test_f1:.4f}")
+        
+        test_preds = self.model.predict(test_data_scaled)
+        test_preds_decoded = self.encoder.inverse_transform(test_preds)
+        
+        test_acc = accuracy_score(test_target_clean, test_preds_decoded)
+        test_f1 = f1_score(test_target_clean, test_preds_decoded, average='macro', zero_division=0)
+
+        logger.info(f"Test Accuracy: {test_acc:.4f}")
+        logger.info(f"Test F1 (macro): {test_f1:.4f}")
         
         logger.info("Training complete!")
 
@@ -145,16 +146,11 @@ class RandomForest(BaseModel):
         
         # Impute missing values
         data_imputed = self.imputer.transform(input_data)
-        
+        data_scaled = self.scaler.transform(data_imputed)
         # Make predictions
-        predictions_encoded = self.model.predict(data_imputed)
-        
-        # Decode labels if needed
-        if self.label_encoder_mapping:
-            reverse_mapping = {v: k for k, v in self.label_encoder_mapping.items()}
-            predictions = [reverse_mapping[pred] for pred in predictions_encoded]
-        else:
-            predictions = predictions_encoded.tolist()
+        predictions_encoded = self.model.predict(data_scaled)
+
+        predictions = self.encoder.inverse_transform(predictions_encoded)
         
         return predictions
 
@@ -182,33 +178,22 @@ class RandomForest(BaseModel):
         # Impute missing values
         test_data_imputed = self.imputer.transform(test_data_clean)
         
-        # Encode targets if needed
-        if self.label_encoder_mapping:
-            test_target_encoded = test_target_clean.map(self.label_encoder_mapping)
-        else:
-            test_target_encoded = test_target_clean
+        test_data_scaled = self.scaler.transform(test_data_imputed)
         
         logger.debug(f"Test data shape: {data.test.shape}")
         logger.debug(f"Test target shape: {data.test_target.shape}")
         
         # Make predictions
-        predictions_encoded = self.model.predict(test_data_imputed)
+        predictions_encoded = self.model.predict(test_data_scaled)
         
-        # Decode predictions for reporting
-        if self.label_encoder_mapping:
-            reverse_mapping = {v: k for k, v in self.label_encoder_mapping.items()}
-            predictions_decoded = [reverse_mapping[pred] for pred in predictions_encoded]
-            targets_decoded = [reverse_mapping[target] for target in test_target_encoded]
-        else:
-            predictions_decoded = predictions_encoded
-            targets_decoded = test_target_encoded
+        preds_decoded = self.encoder.inverse_transform(predictions_encoded)
         
         # Calculate metrics
-        accuracy = accuracy_score(test_target_encoded, predictions_encoded)
-        f1_macro = f1_score(test_target_encoded, predictions_encoded, average='macro', zero_division=0)
-        f1_weighted = f1_score(test_target_encoded, predictions_encoded, average='weighted', zero_division=0)
-        report = classification_report(targets_decoded, predictions_decoded, output_dict=True)
-        cm = confusion_matrix(targets_decoded, predictions_decoded)
+        accuracy = accuracy_score(test_target_clean, preds_decoded)
+        f1_macro = f1_score(test_target_clean, preds_decoded, average='macro', zero_division=0)
+        f1_weighted = f1_score(test_target_clean, preds_decoded, average='weighted', zero_division=0)
+        report = classification_report(test_target_clean, preds_decoded, output_dict=True)
+        cm = confusion_matrix(test_target_clean, preds_decoded)
         
         # Get feature importances
         feature_importances = self.model.feature_importances_.tolist()
@@ -229,7 +214,7 @@ class RandomForest(BaseModel):
         logger.info(f"Test F1 (weighted): {f1_weighted:.4f}")
         if oob_score is not None:
             logger.info(f"OOB Score: {oob_score:.4f}")
-        logger.info(f"Classification Report:\n{classification_report(targets_decoded, predictions_decoded)}")
+        logger.info(f"Classification Report:\n{report}")
         logger.debug(f"Feature Importances: {feature_importances}")
         return results
 
@@ -246,7 +231,8 @@ class RandomForest(BaseModel):
         model_data = {
             "model": self.model,
             "imputer": self.imputer,
-            "label_encoder_mapping": self.label_encoder_mapping,
+            "encoder": self.encoder,
+            "scaler": self.scaler,
             "hyperparameters": {
                 "n_estimators": self.n_estimators,
                 "min_samples_split": self.min_samples_split,
@@ -276,8 +262,9 @@ class RandomForest(BaseModel):
         # Restore model and preprocessors
         self.model = model_data["model"]
         self.imputer = model_data["imputer"]
-        self.label_encoder_mapping = model_data["label_encoder_mapping"]
-        
+        self.encoder = model_data["encoder"]
+        self.scaler = model_data["scaler"]
+
         # Restore hyperparameters
         hparams = model_data["hyperparameters"]
         self.n_estimators = hparams["n_estimators"]

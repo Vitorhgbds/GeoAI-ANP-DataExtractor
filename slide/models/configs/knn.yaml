@@ -10,7 +10,5 @@ params:
   p:
     - 1
     - 2
-  algorithm:
-    - 'auto'
-    - 'ball_tree'
-    - 'kd_tree'
+  algorithm: 'kd_tree'
+  leaf_size: 480

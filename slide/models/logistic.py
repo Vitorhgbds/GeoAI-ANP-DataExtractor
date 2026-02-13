@@ -1,6 +1,10 @@
+import numpy as np
+from sklearn.calibration import LabelEncoder
+from sklearn.discriminant_analysis import StandardScaler
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression as LogisticRegressionClassifier
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, f1_score
+from sklearn.utils import compute_class_weight
 from slide.logger import Logger
 from slide.models import BaseModel, ModelDataset
 import json
@@ -37,8 +41,9 @@ class LogisticRegression(BaseModel):
         self.random_state = random_state
         self.n_jobs = n_jobs
         self.model = None
-        self.imputer = None
-        self.label_encoder_mapping = None  # For encoding/decoding labels
+        self.imputer = SimpleImputer(strategy='median')
+        self.encoder = LabelEncoder()
+        self.scaler = StandardScaler()
         logger.info(
             f"Initialized LogisticRegression with max_iter={max_iter}, C={C}, solver={solver}"
         )
@@ -60,57 +65,35 @@ class LogisticRegression(BaseModel):
         # Impute missing values
         self.imputer = SimpleImputer(strategy='median')
         train_data_imputed = self.imputer.fit_transform(train_data_clean)
+        train_data_scaled = self.scaler.fit_transform(train_data_imputed)
+        train_target_encoded = self.encoder.fit_transform(train_target_clean)
         
-        # Create label encoding for non-numeric targets
-        if train_target_clean.dtype == 'object':
-            unique_labels = train_target_clean.unique()
-            self.label_encoder_mapping = {label: idx for idx, label in enumerate(unique_labels)}
-            train_target_encoded = train_target_clean.map(self.label_encoder_mapping)
-        else:
-            train_target_encoded = train_target_clean
-        
-        logger.debug(f"Train data shape: {train_data_imputed.shape}")
+        logger.debug(f"Train data shape: {train_data_scaled.shape}")
         logger.debug(f"Train target shape: {train_target_encoded.shape}")
         
+        classes = np.unique(train_target_encoded)
+        weights = compute_class_weight(class_weight="balanced", classes=classes, y=train_target_encoded)
+        class_weights = dict(zip(classes, weights))
         # Train model
         self.model = LogisticRegressionClassifier(
             max_iter=self.max_iter,
             C=self.C,
             solver=self.solver,
             random_state=self.random_state,
+            #class_weight=class_weights,
             n_jobs=self.n_jobs,
             verbose=1
         )
         
-        self.model.fit(train_data_imputed, train_target_encoded)
+        self.model.fit(train_data_scaled, train_target_encoded)
         
         # Evaluate on training data
-        train_preds = self.model.predict(train_data_imputed)
+        train_preds = self.model.predict(train_data_scaled)
         train_acc = accuracy_score(train_target_encoded, train_preds)
         train_f1 = f1_score(train_target_encoded, train_preds, average='macro', zero_division=0)
         
         logger.info(f"Training Accuracy: {train_acc:.4f}")
         logger.info(f"Training F1 (macro): {train_f1:.4f}")
-        
-        # Evaluate on test data if available
-        test_mask = data.test_target.notna()
-        if test_mask.sum() > 0:
-            test_data_clean = data.test[test_mask]
-            test_target_clean = data.test_target[test_mask]
-            
-            test_data_imputed = self.imputer.transform(test_data_clean)
-            
-            if self.label_encoder_mapping:
-                test_target_encoded = test_target_clean.map(self.label_encoder_mapping)
-            else:
-                test_target_encoded = test_target_clean
-            
-            test_preds = self.model.predict(test_data_imputed)
-            test_acc = accuracy_score(test_target_encoded, test_preds)
-            test_f1 = f1_score(test_target_encoded, test_preds, average='macro', zero_division=0)
-            
-            logger.info(f"Test Accuracy: {test_acc:.4f}")
-            logger.info(f"Test F1 (macro): {test_f1:.4f}")
         
         logger.info("Training complete!")
 
@@ -132,16 +115,10 @@ class LogisticRegression(BaseModel):
         
         # Impute missing values
         data_imputed = self.imputer.transform(input_data)
-        
+        data_scaled = self.scaler.transform(data_imputed)
         # Make predictions
-        predictions_encoded = self.model.predict(data_imputed)
-        
-        # Decode labels if needed
-        if self.label_encoder_mapping:
-            reverse_mapping = {v: k for k, v in self.label_encoder_mapping.items()}
-            predictions = [reverse_mapping[pred] for pred in predictions_encoded]
-        else:
-            predictions = predictions_encoded.tolist()
+        predictions_encoded = self.model.predict(data_scaled)
+        predictions = self.encoder.inverse_transform(predictions_encoded)
         
         return predictions
 
@@ -168,34 +145,22 @@ class LogisticRegression(BaseModel):
         
         # Impute missing values
         test_data_imputed = self.imputer.transform(test_data_clean)
+        test_data_scaled = self.scaler.transform(test_data_imputed)
         
         logger.debug(f"Test data shape: {data.test.shape}")
         logger.debug(f"Test target shape: {data.test_target.shape}")
         
-        # Encode targets if needed
-        if self.label_encoder_mapping:
-            test_target_encoded = test_target_clean.map(self.label_encoder_mapping)
-        else:
-            test_target_encoded = test_target_clean
         
         # Make predictions
-        predictions_encoded = self.model.predict(test_data_imputed)
-        
-        # Decode predictions for reporting
-        if self.label_encoder_mapping:
-            reverse_mapping = {v: k for k, v in self.label_encoder_mapping.items()}
-            predictions_decoded = [reverse_mapping[pred] for pred in predictions_encoded]
-            targets_decoded = [reverse_mapping[target] for target in test_target_encoded]
-        else:
-            predictions_decoded = predictions_encoded
-            targets_decoded = test_target_encoded
+        predictions_encoded = self.model.predict(test_data_scaled)
+        predictions = self.encoder.inverse_transform(predictions_encoded)
         
         # Calculate metrics
-        accuracy = accuracy_score(test_target_encoded, predictions_encoded)
-        f1_macro = f1_score(test_target_encoded, predictions_encoded, average='macro', zero_division=0)
-        f1_weighted = f1_score(test_target_encoded, predictions_encoded, average='weighted', zero_division=0)
-        report = classification_report(targets_decoded, predictions_decoded, output_dict=True)
-        cm = confusion_matrix(test_target_encoded, predictions_encoded)
+        accuracy = accuracy_score(test_target_clean, predictions)
+        f1_macro = f1_score(test_target_clean, predictions, average='macro', zero_division=0)
+        f1_weighted = f1_score(test_target_clean, predictions, average='weighted', zero_division=0)
+        report = classification_report(test_target_clean, predictions, output_dict=True)
+        cm = confusion_matrix(test_target_clean, predictions)
         
         
         results = {
@@ -225,7 +190,8 @@ class LogisticRegression(BaseModel):
         model_data = {
             "model": self.model,
             "imputer": self.imputer,
-            "label_encoder_mapping": self.label_encoder_mapping,
+            "scaler": self.scaler,
+            "encoder": self.encoder,
             "hyperparameters": {
                 "max_iter": self.max_iter,
                 "C": self.C,
@@ -253,7 +219,8 @@ class LogisticRegression(BaseModel):
         # Restore model and preprocessors
         self.model = model_data["model"]
         self.imputer = model_data["imputer"]
-        self.label_encoder_mapping = model_data["label_encoder_mapping"]
+        self.scaler = model_data["scaler"]
+        self.encoder = model_data["encoder"]
         
         # Restore hyperparameters
         hparams = model_data["hyperparameters"]
