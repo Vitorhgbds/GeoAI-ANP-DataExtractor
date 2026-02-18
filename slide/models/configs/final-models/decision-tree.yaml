@@ -1,0 +1,4 @@
+model_type: 'DecisionTree'
+params:
+  min_samples_split: 2
+  min_samples_leaf: 10
