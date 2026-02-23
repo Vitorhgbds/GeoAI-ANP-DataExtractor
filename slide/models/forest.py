@@ -105,26 +105,9 @@ class RandomForest(BaseModel):
             verbose=1,
             #class_weight=class_weights
         )
+        logger.info(f"Starting training...")
         
         self.model.fit(train_data_scaled, train_target_encoded)
-        
-        # Evaluate on training data
-        train_preds = self.model.predict(train_data_scaled)
-        train_acc = accuracy_score(train_target_encoded, train_preds)
-        train_f1 = f1_score(train_target_encoded, train_preds, average='macro', zero_division=0)
-        
-        logger.info(f"Training Accuracy: {train_acc:.4f}")
-        logger.info(f"Training F1 (macro): {train_f1:.4f}")
-        
-        
-        test_preds = self.model.predict(test_data_scaled)
-        test_preds_decoded = self.encoder.inverse_transform(test_preds)
-        
-        test_acc = accuracy_score(test_target_clean, test_preds_decoded)
-        test_f1 = f1_score(test_target_clean, test_preds_decoded, average='macro', zero_division=0)
-
-        logger.info(f"Test Accuracy: {test_acc:.4f}")
-        logger.info(f"Test F1 (macro): {test_f1:.4f}")
         
         logger.info("Training complete!")
 

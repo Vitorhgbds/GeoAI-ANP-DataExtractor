@@ -98,15 +98,10 @@ class XGBoost(BaseModel):
             verbose=2
         )
         
+        logger.info(f"Starting training...")
+        
         self.model.fit(train_data_scaled, train_target_encoded)
         
-        # Evaluate on training data
-        train_preds = self.model.predict(train_data_scaled)
-        train_acc = accuracy_score(train_target_encoded, train_preds)
-        train_f1 = f1_score(train_target_encoded, train_preds, average='macro', zero_division=0)
-        
-        logger.info(f"Training Accuracy: {train_acc:.4f}")
-        logger.info(f"Training F1 (macro): {train_f1:.4f}")
         logger.info("Training complete!")
 
     def predict(self, input_data) -> list:
@@ -167,8 +162,8 @@ class XGBoost(BaseModel):
         test_data_imputed = self.imputer.transform(test_data_clean)
         test_data_scaled = self.scaler.transform(test_data_imputed)
         
-        logger.debug(f"Test data shape: {data.test.shape}")
-        logger.debug(f"Test target shape: {data.test_target.shape}")
+        logger.debug(f"Test data shape: {test_data_scaled.shape}")
+        logger.debug(f"Test target shape: {test_target_clean.shape}")
         # Make predictions
         predictions_encoded = self.model.predict(test_data_scaled)
         

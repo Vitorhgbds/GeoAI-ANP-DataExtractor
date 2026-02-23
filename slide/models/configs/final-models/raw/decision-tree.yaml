@@ -1,7 +1,12 @@
+model_type: 'DecisionTree'
+params:
+  min_samples_split: 10
+  min_samples_leaf: 10
 policy:
-  total_wells: 400
-  apply_scaling: true
-  apply_presence: true
+  name: 'raw-1665-wells'
+  total_wells: 1665
+  apply_scaling: false
+  apply_presence: false
   apply_rolling_stats: false
   labels:
     - 'ARENITO'
@@ -21,3 +26,4 @@ policy:
     - 'DOLOMITO'
   test_size: 0.2
   random_state: 42
+trials: 1

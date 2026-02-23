@@ -60,7 +60,7 @@ def load_model_params(trial: optuna.Trial, params: dict) -> dict:
         model_params[param_name] = v
     return model_params
 
-def objective(trial: optuna.Trial, data: ModelDataset, model_type: str, params: dict) -> float:
+def objective(trial: optuna.Trial, data: ModelDataset, model_type: str, params: dict, *args, **kwargs) -> float:
     logger.info(f"Starting trial {trial.number}")
     model_params = load_model_params(trial, params)
     logger.debug(f"Model parameters for trial {trial.number}: {model_params}")
@@ -142,17 +142,17 @@ def main():
     logger.info("Policy Config:", policy_config)
     
     
-    data_policy = DefaultFeatures(**policy_config["policy"])
+    data_policy = DefaultFeatures(**model_config["policy"])
     data = data_policy.fetch()
     
     
     # Specify the SQLite database file
-    storage = "sqlite:///optuna_studies_latest.db"
-    study_name = f"{model_config['model_type'].lower()}_{str(args.policy_config).split('/')[-1].split('.')[0]}_new"
+    storage = "sqlite:///optuna_studies_size.db"
+    study_name = f"{model_config['model_type'].lower()}-policy-{str(model_config['policy']['name'])}"
     
     # Create or load an Optuna study
     study = optuna.create_study(direction="maximize", storage=storage, study_name=study_name, load_if_exists=True)
-    study.optimize(lambda trial: objective(trial, data=data, **model_config), n_trials=15, gc_after_trial=True)
+    study.optimize(lambda trial: objective(trial, data=data, **model_config), n_trials=1, gc_after_trial=True)
     logger.info(f"Best trial: {study.best_trial.params}")
     logger.info(f"Best parameters: {study.best_trial.params}")
 

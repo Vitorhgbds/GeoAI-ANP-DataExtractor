@@ -1,9 +1,16 @@
+model_type: 'KNN'
+params:
+  n_neighbors: 15
+  weights: 'distance'
+  p: 1
+  algorithm: 'ball_tree'
+  leaf_size: 480
 policy:
-  total_wells: 400
+  name: 'presence-1665-wells'
+  total_wells: 1665
   apply_scaling: true
   apply_presence: true
-  apply_rolling_stats: true
-  rolling_window: 10
+  apply_rolling_stats: false
   labels:
     - 'ARENITO'
     - 'FOLHELHO'
@@ -22,5 +29,4 @@ policy:
     - 'DOLOMITO'
   test_size: 0.2
   random_state: 42
-
-  
+trials: 1

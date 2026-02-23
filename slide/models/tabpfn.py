@@ -9,13 +9,13 @@ import pickle
 import gc
 from tabpfn import TabPFNClassifier
 from tabpfn_extensions.many_class import ManyClassClassifier
+from tabpfn_extensions import TunedTabPFNClassifier
 import os
 
 logging = Logger()
 logger = logging.get_logger()
 
-os.environ["TABPFN_DISABLE_TELEMETRY"] = "1"
-logger.info("TABPFN telemetry disabled via environment variable.")
+
 
 class TABPFN(BaseModel):
 	def __init__(
@@ -53,11 +53,15 @@ class TABPFN(BaseModel):
 		self.alphabet_size = alphabet_size
 		self.fit_mode = fit_mode
   
+		os.environ["TABPFN_DISABLE_TELEMETRY"] = "1"
+		logger.info("TABPFN telemetry disabled via environment variable.")
+  
 		logger.info(
 			"Initialized TABPFN with "
 			f"device={device}, n_estimators={n_estimators}, seed={seed}, alphabet_size={alphabet_size}, "
 			f"ignore_pretraining_limits={ignore_pretraining_limits}, fit_mode={fit_mode}, "
 			f"n_jobs={n_jobs}, n_preprocessing_jobs={n_preprocessing_jobs}"
+			f", subsample_size={subsample_size}"
 		)
 
 	def train(self, data: ModelDataset) -> None:
@@ -110,13 +114,14 @@ class TABPFN(BaseModel):
 		logger.debug(f"Train target shape: {train_target_encoded.shape}")
 
 		# Train model
-		tabpfn = TabPFNClassifier(
+		tabpfn = FinetunedTabPFNClassifier(
 			device=self.device,
 			n_preprocessing_jobs=self.n_preprocessing_jobs,
 			ignore_pretraining_limits=self.ignore_pretraining_limits,
 			n_estimators=self.n_estimators,
 			fit_mode=self.fit_mode,
-			inference_config={"SUBSAMPLE_SAMPLES": idx_per_estimator},
+			memory_saving_mode=7,
+			inference_config={"SUBSAMPLE_SAMPLES": self.subsample_size},
 		)
   
 		# Wrap it with ManyClassClassifier
@@ -133,14 +138,14 @@ class TABPFN(BaseModel):
 		self.model.fit(train_data_scaled, train_target_encoded)
 		logger.debug("Model fitting complete.")
   
-		logger.debug("Starting model evaluation on training data...")
+		logger.debug("Starting model evaluation on test data...")
 		# Evaluate on training data
-		train_preds = self.model.predict(train_data_scaled)
-		train_acc = accuracy_score(train_target_encoded, train_preds)
-		train_f1 = f1_score(train_target_encoded, train_preds, average="macro", zero_division=0)
+		# train_preds = self.model.predict(train_data_scaled)
+		# train_acc = accuracy_score(train_target_encoded, train_preds)
+		# train_f1 = f1_score(train_target_encoded, train_preds, average="macro", zero_division=0)
 
-		logger.info(f"Training Accuracy: {train_acc:.4f}")
-		logger.info(f"Training F1 (macro): {train_f1:.4f}")
+		# logger.info(f"Training Accuracy: {train_acc:.4f}")
+		# logger.info(f"Training F1 (macro): {train_f1:.4f}")
 
 		test_preds = self.model.predict(test_data_scaled)
 		test_acc = accuracy_score(test_target_encoded, test_preds)

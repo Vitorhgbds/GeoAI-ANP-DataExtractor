@@ -1,9 +1,15 @@
+model_type: 'XGBoost'
+params:
+  n_estimators: 500
+  subsample: 0.8
+  colsample_bytree: 0.8
+  learning_rate: 0.001
 policy:
-  total_wells: 400
+  name: 'presence-1665-wells'
+  total_wells: 1665
   apply_scaling: true
   apply_presence: true
-  apply_rolling_stats: true
-  rolling_window: 5
+  apply_rolling_stats: false
   labels:
     - 'ARENITO'
     - 'FOLHELHO'
@@ -22,3 +28,4 @@ policy:
     - 'DOLOMITO'
   test_size: 0.2
   random_state: 42
+trials: 1

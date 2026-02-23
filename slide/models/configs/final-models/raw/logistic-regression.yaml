@@ -1,5 +1,11 @@
+model_type: 'LogisticRegression'
+params:
+  max_iter: 500
+  C: 2.54232
+  solver: 'saga'
 policy:
-  total_wells: 400
+  name: 'raw-1665-wells'
+  total_wells: 1665
   apply_scaling: false
   apply_presence: false
   apply_rolling_stats: false
@@ -21,3 +27,4 @@ policy:
     - 'DOLOMITO'
   test_size: 0.2
   random_state: 42
+trials: 1
