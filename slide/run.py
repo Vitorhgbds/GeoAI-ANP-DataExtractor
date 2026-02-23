@@ -113,12 +113,20 @@ def main():
     )
     
     parser.add_argument(
-        "--policy-config",
+        "--db-name",
         type=str,
-        required=True,
-        dest="policy_config",
-        help="Path to feature processing policy configuration YAML file"
+        default="optuna_studies.db",
+        dest="db_name",
+        help="Name of the database to use"
     )
+    
+    parser.add_argument(
+        "--num-trials",
+        type=int,
+        default=1,
+        dest="num_trials",
+        help="Number of Optuna trials to run"
+        )
     
     args = parser.parse_args()
     
@@ -127,32 +135,24 @@ def main():
     
     # Validate config files exist
     model_config_path = Path(args.model_config)
-    policy_config_path = Path(args.policy_config)
     
     if not model_config_path.exists():
         raise FileNotFoundError(f"Model config file not found: {model_config_path}")
     
-    if not policy_config_path.exists():
-        raise FileNotFoundError(f"Policy config file not found: {policy_config_path}")
-    
     # Load configurations
     model_config = load_config(args.model_config)
-    policy_config = load_config(args.policy_config)
-    logger.info("Model Config:", model_config)
-    logger.info("Policy Config:", policy_config)
-    
+    logger.info("Model Config: %s", model_config)
     
     data_policy = DefaultFeatures(**model_config["policy"])
     data = data_policy.fetch()
     
-    
     # Specify the SQLite database file
-    storage = "sqlite:///optuna_studies_size.db"
+    storage = f"sqlite:///{args.db_name}"
     study_name = f"{model_config['model_type'].lower()}-policy-{str(model_config['policy']['name'])}"
     
     # Create or load an Optuna study
     study = optuna.create_study(direction="maximize", storage=storage, study_name=study_name, load_if_exists=True)
-    study.optimize(lambda trial: objective(trial, data=data, **model_config), n_trials=1, gc_after_trial=True)
+    study.optimize(lambda trial: objective(trial, data=data, **model_config), n_trials=model_config.get('trials', args.num_trials), gc_after_trial=True)
     logger.info(f"Best trial: {study.best_trial.params}")
     logger.info(f"Best parameters: {study.best_trial.params}")
 
