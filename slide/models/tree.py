@@ -72,7 +72,8 @@ class DecisionTree(BaseModel):
             min_samples_split=self.min_samples_split,
             min_samples_leaf=self.min_samples_leaf,
             max_depth=self.max_depth,
-            random_state=self.random_state
+            random_state=self.random_state,
+            class_weight='balanced'
         )
         
         logger.info(f"Starting training...")

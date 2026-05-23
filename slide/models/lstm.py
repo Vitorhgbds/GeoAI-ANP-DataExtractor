@@ -12,6 +12,8 @@ import torch
 import torch.nn as nn
 import gc
 
+from tqdm import tqdm
+
 logging = Logger()
 logger = logging.get_logger()
 
@@ -19,6 +21,18 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.backends.cudnn.benchmark = True
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
+
+
+class GPUDataset(torch.utils.data.Dataset):
+    def __init__(self, X, y):
+        self.X = X
+        self.y = y
+    
+    def __len__(self):
+        return len(self.X)
+    
+    def __getitem__(self, idx):
+        return self.X[idx], self.y[idx]
 
 
 class LSTMClassifier(nn.Module):
@@ -190,8 +204,8 @@ class LSTM(BaseModel):
         weight_tensor = torch.tensor(class_weights, dtype=torch.float32, device=DEVICE)
         criterion = nn.CrossEntropyLoss(weight=weight_tensor)
 
-        train_ds = TensorDataset(train_X, train_y)
-        test_ds  = TensorDataset(test_X, test_y)
+        train_ds = GPUDataset(train_X, train_y)
+        test_ds  = GPUDataset(test_X, test_y)
 
         train_loader = DataLoader(
             train_ds,
@@ -199,8 +213,8 @@ class LSTM(BaseModel):
             sampler=sampler,                     # <-- much faster than WeightedRandomSampler
             num_workers=self.num_workers,
             pin_memory=True,
-            persistent_workers=(self.num_workers > 0),
-            prefetch_factor=2
+            #persistent_workers=(self.num_workers > 0),
+            #prefetch_factor=2
         )
         test_loader = DataLoader(
             test_ds,
@@ -208,8 +222,8 @@ class LSTM(BaseModel):
             shuffle=False,
             num_workers=self.num_workers,
             pin_memory=True,
-            persistent_workers=(self.num_workers > 0),
-            prefetch_factor=2
+            #persistent_workers=(self.num_workers > 0),
+            #prefetch_factor=2
         )
 
         self.model = LSTMClassifier(
@@ -237,7 +251,7 @@ class LSTM(BaseModel):
             correct = 0
             total = 0
 
-            for batch_x, batch_y in train_loader:
+            for batch_x, batch_y in tqdm(train_loader, desc=f"Epoch {epoch+1}/{self.epochs}"):
                 batch_x = batch_x.to(DEVICE, non_blocking=True)
                 batch_y = batch_y.to(DEVICE, non_blocking=True)
 
@@ -279,6 +293,11 @@ class LSTM(BaseModel):
             val_acc = accuracy_score(true_all, preds_all)
             val_f1  = f1_score(true_all, preds_all, average="macro", zero_division=0)
 
+            logger.info(
+                f"Epoch {epoch+1}/{self.epochs} | loss {train_loss:.4f} | train_acc {train_acc:.4f} | "
+                f"val_acc {val_acc:.4f} | val_f1m {val_f1:.4f} | no_improve {no_improve}/{self.patience}"
+            )
+            
             # Early stopping
             if val_f1 > best_f1:
                 best_f1 = val_f1
@@ -287,11 +306,6 @@ class LSTM(BaseModel):
                 best_state = {k: v.detach().cpu().clone() for k, v in self.model.state_dict().items()}
             else:
                 no_improve += 1
-
-            logger.info(
-                f"Epoch {epoch+1}/{self.epochs} | loss {train_loss:.4f} | train_acc {train_acc:.4f} | "
-                f"val_acc {val_acc:.4f} | val_f1m {val_f1:.4f} | no_improve {no_improve}/{self.patience}"
-            )
 
             if no_improve >= self.patience:
                 break
@@ -368,7 +382,7 @@ class LSTM(BaseModel):
         test_X = torch.as_tensor(X_test, dtype=torch.float32)
         test_y = torch.as_tensor(y_test, dtype=torch.long)
         
-        test_ds = TensorDataset(test_X, test_y)
+        test_ds = GPUDataset(test_X, test_y)
         test_loader = DataLoader(test_ds, batch_size=self.batch_size, shuffle=False)
         
         # Evaluate
@@ -395,7 +409,7 @@ class LSTM(BaseModel):
         f1_macro = f1_score(test_targets_decoded, test_preds_decoded, average="macro", zero_division=0)
         f1_weighted = f1_score(test_targets_decoded, test_preds_decoded, average="weighted", zero_division=0)
         report = classification_report(test_targets_decoded, test_preds_decoded, output_dict=True)
-        cm = confusion_matrix(test_targets_decoded, test_preds_decoded)
+        cm = confusion_matrix(test_targets_decoded, test_preds_decoded, labels=self.label_encoder.classes_)
         
         logger.info(f"Test Accuracy: {accuracy:.4f}")
         logger.info(f"Test F1 (macro): {f1_macro:.4f}")

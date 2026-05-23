@@ -95,7 +95,8 @@ class XGBoost(BaseModel):
             n_jobs=self.n_jobs,
             tree_method=self.tree_method,
             eval_metric=self.eval_metric,
-            verbose=2
+            verbose=2,
+            #class_weight='balanced'
         )
         
         logger.info(f"Starting training...")

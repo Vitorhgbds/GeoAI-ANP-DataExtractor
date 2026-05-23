@@ -12,6 +12,8 @@ import torch
 import torch.nn as nn
 import gc
 
+from tqdm import tqdm
+
 logging = Logger()
 logger = logging.get_logger()
 
@@ -20,6 +22,16 @@ torch.backends.cudnn.benchmark = True
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
+class GPUDataset(torch.utils.data.Dataset):
+    def __init__(self, X, y):
+        self.X = X
+        self.y = y
+    
+    def __len__(self):
+        return len(self.X)
+    
+    def __getitem__(self, idx):
+        return self.X[idx], self.y[idx]
 
 class LSTMClassifier(nn.Module):
     def __init__(
@@ -191,19 +203,15 @@ class BILSTM(BaseModel):
         
         logger.debug(f"Num classes: {num_classes}, Num features: {num_features}")
         
+        logger.debug("Converting data to tensors and pushing to device...")
+        
         # Convert to tensors
         train_X = torch.as_tensor(X_train, dtype=torch.float32)
         train_y = torch.as_tensor(y_train, dtype=torch.long)
         test_X = torch.as_tensor(X_test, dtype=torch.float32)
         test_y = torch.as_tensor(y_test, dtype=torch.long)
 
-        # DEBUG: Check tensor properties
-        logger.debug(f"Tensor dtypes - train_X: {train_X.dtype}, train_y: {train_y.dtype}")
-        logger.debug(f"Tensor contains NaN - train_X: {torch.isnan(train_X).any()}, test_X: {torch.isnan(test_X).any()}")
-        logger.debug(f"Tensor contains inf - train_X: {torch.isinf(train_X).any()}, test_X: {torch.isinf(test_X).any()}")
-        logger.debug(f"Target value ranges - train_y: [{train_y.min()}, {train_y.max()}], test_y: [{test_y.min()}, {test_y.max()}]")
-        logger.debug(f"Sample train sequence:\n{train_X[0]}")
-        logger.debug(f"Sample train target: {train_y[0]}")
+        logger.debug("Done converting tensors.")
         
         # Class weights for imbalanced data
         y_train_np = np.asarray(y_train)
@@ -222,10 +230,10 @@ class BILSTM(BaseModel):
         
         weight_tensor = torch.tensor(class_weights, dtype=torch.float32, device=self.device)
         criterion = nn.CrossEntropyLoss(weight=weight_tensor)
-        
+
         # Create data loaders
-        train_ds = TensorDataset(train_X, train_y)
-        test_ds = TensorDataset(test_X, test_y)
+        train_ds = GPUDataset(train_X, train_y)
+        test_ds = GPUDataset(test_X, test_y)
         
         train_loader = DataLoader(
             train_ds,
@@ -233,8 +241,8 @@ class BILSTM(BaseModel):
             sampler=sampler,
             num_workers=self.num_workers,
             pin_memory=True,
-            persistent_workers=(self.num_workers > 0),
-            prefetch_factor=2
+            #persistent_workers=(self.num_workers > 0),
+            #prefetch_factor=2
         )
         test_loader = DataLoader(
             test_ds,
@@ -242,8 +250,8 @@ class BILSTM(BaseModel):
             shuffle=False,
             num_workers=self.num_workers,
             pin_memory=True,
-            persistent_workers=(self.num_workers > 0),
-            prefetch_factor=2
+            #persistent_workers=(self.num_workers > 0),
+            #prefetch_factor=2
         )
         
         # Initialize model
@@ -255,7 +263,7 @@ class BILSTM(BaseModel):
             dropout=self.dropout
         ).to(self.device)
         
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
+        optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
         
         # Mixed precision training
         use_amp = (self.device.type == "cuda")
@@ -268,6 +276,7 @@ class BILSTM(BaseModel):
         logger.info(f"Training with: hidden_size={self.hidden_size}, num_layers={self.num_layers}, "
                    f"dropout={self.dropout}, batch_size={self.batch_size}")
         
+        logger.info("Starting training loop...")
         try:
             for epoch in range(self.epochs):
                 # Training phase
@@ -276,7 +285,8 @@ class BILSTM(BaseModel):
                 correct = 0
                 total = 0
                 
-                for batch_x, batch_y in train_loader:
+                logger.info(f"Starting epoch {epoch+1}/{self.epochs}")
+                for batch_x, batch_y in tqdm(train_loader, desc=f"Epoch {epoch+1}/{self.epochs}"):
                     batch_x = batch_x.to(self.device, non_blocking=True)
                     batch_y = batch_y.to(self.device, non_blocking=True)
                     
@@ -295,10 +305,11 @@ class BILSTM(BaseModel):
                     correct += (preds == batch_y).sum().item()
                     total += batch_y.numel()
                 
-                # logger.debug(f"Epoch {epoch+1} - Training loss: {total_loss:.4f}, Accuracy: {correct/total:.4f}")
-                # logger.debug(f"train_loader {len(train_loader)}, test_loader {len(test_loader)}")
+                logger.debug(f"Finished training loop. Calculating metrics...")
+                
                 train_loss = total_loss / max(1, len(train_loader))
                 train_acc = correct / max(1, total)
+                logger.debug(f"Training - loss: {train_loss:.4f} | Accuracy: {train_acc:.4f}")
                 
                 # Validation phase
                 self.model.eval()
@@ -306,6 +317,10 @@ class BILSTM(BaseModel):
                 true_all = []
                 
                 with torch.no_grad():
+                    #logits_all = self.model(test_X)  # Forward all at once
+                    #preds_all = logits_all.argmax(dim=1).cpu().numpy()
+                    #true_all = test_y.cpu().numpy()
+                   
                     for batch_x, batch_y in test_loader:
                         batch_x = batch_x.to(self.device, non_blocking=True)
                         logits = self.model(batch_x)
@@ -313,11 +328,20 @@ class BILSTM(BaseModel):
                         true_all.append(batch_y.cpu())
                 
                 preds_all = torch.cat(preds_all).numpy()
+                #preds_all = np.concatenate(preds_all)
                 true_all = torch.cat(true_all).numpy()
+                #true_all = np.concatenate(true_all)
                 
                 val_acc = accuracy_score(true_all, preds_all)
                 val_f1 = f1_score(true_all, preds_all, average="macro", zero_division=0)
                 
+                logger.debug(f"Validation - Accuracy: {val_acc:.4f} | F1 (macro): {val_f1:.4f}")
+                
+                logger.info(
+                    f"Loss: {train_loss:.4f} | "
+                    f"Train Acc: {train_acc:.4f} | Val Acc: {val_acc:.4f} | "
+                    f"Val F1: {val_f1:.4f} | No Improve: {no_improve}/{self.patience}"
+                )
                 # Early stopping
                 if val_f1 > best_f1:
                     best_f1 = val_f1
@@ -326,12 +350,6 @@ class BILSTM(BaseModel):
                     logger.debug(f"New best F1: {best_f1:.4f}")
                 else:
                     no_improve += 1
-                
-                logger.info(
-                    f"Epoch {epoch+1}/{self.epochs} | Loss: {train_loss:.4f} | "
-                    f"Train Acc: {train_acc:.4f} | Val Acc: {val_acc:.4f} | "
-                    f"Val F1: {val_f1:.4f} | No Improve: {no_improve}/{self.patience}"
-                )
                 
                 if no_improve >= self.patience:
                     logger.info(f"Early stopping at epoch {epoch+1}")
@@ -407,6 +425,7 @@ class BILSTM(BaseModel):
         Returns:
             Dictionary with evaluation metrics
         """
+        logger.info("Evaluating model on test data...")
         if self.model is None:
             raise ValueError("Model not trained. Call train() first or load a trained model.")
         
@@ -414,8 +433,8 @@ class BILSTM(BaseModel):
         X_train, y_train, X_test, y_test = self.__process_train_test(test_data)
         
         # Convert to tensors
-        test_X = torch.as_tensor(X_test, dtype=torch.float32)
-        test_y = torch.as_tensor(y_test, dtype=torch.long)
+        test_X = torch.as_tensor(X_test, dtype=torch.float32).to(self.device)
+        test_y = torch.as_tensor(y_test, dtype=torch.long).to(self.device)
         
         test_ds = TensorDataset(test_X, test_y)
         test_loader = DataLoader(test_ds, batch_size=self.batch_size, shuffle=False)
@@ -427,7 +446,6 @@ class BILSTM(BaseModel):
         
         with torch.no_grad():
             for batch_x, batch_y in test_loader:
-                batch_x = batch_x.to(self.device)
                 logits = self.model(batch_x)
                 preds_all.append(logits.argmax(dim=1).cpu().numpy())
                 true_all.append(batch_y.cpu().numpy())

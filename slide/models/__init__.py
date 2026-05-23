@@ -64,9 +64,9 @@ class FeatureProcessingPolicy(ABC):
             CASE WHEN Features.CALI BETWEEN 6 AND 16 THEN Features.CALI ELSE NULL END AS CALI,
             CASE WHEN Features.ILD BETWEEN 0.2 AND 2000 THEN Features.ILD ELSE NULL END AS ILD,
             CASE WHEN Features.RHOB BETWEEN 1.95 AND 2.95 THEN Features.RHOB ELSE NULL END AS RHOB,
-            CASE WHEN Features.NPHI BETWEEN 0 AND 45 THEN Features.NPHI ELSE NULL END AS NPHI,
+            CASE WHEN Features.NPHI BETWEEN -15 AND 45 THEN Features.NPHI ELSE NULL END AS NPHI,
             CASE WHEN Features.MSFL BETWEEN 0.2 AND 2000 THEN Features.MSFL ELSE NULL END AS MSFL,
-            CASE WHEN Features.DRHO BETWEEN -0.1 AND 0.3 THEN Features.DRHO ELSE NULL END AS DRHO,
+            CASE WHEN Features.DRHO BETWEEN -0.3 AND 0.3 THEN Features.DRHO ELSE NULL END AS DRHO,
             CASE WHEN Features.SFLU BETWEEN 0.2 AND 2000 THEN Features.SFLU ELSE NULL END AS SFLU,
             Features.rock
         """ if self.apply_scaling else "SELECT *"
